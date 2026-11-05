@@ -1008,8 +1008,8 @@ internal sealed class Panel
             Box(parent, 0f, y, 276f, height, Style.Band, null);
         if (selection == Selection.Focus)
             Print(parent, "▸", 10f, y + 10f, 14f, 20f, 13, Style.Text, TextAnchor.MiddleLeft);
-        Print(parent, item.Name + (worn ? "   (Worn)" : ""), 28f, y + 8f, 240f, 20f, 15, Style.Text, TextAnchor.MiddleLeft);
-        Print(parent, SetSummary(item.Items.Values), 28f, y + 28f, 240f, 16f, 12, Style.Dim, TextAnchor.MiddleLeft);
+        Fit(parent, item.Name + (worn ? "   (Worn)" : ""), 28f, y + 8f, 240f, 20f, 15, Style.Text);
+        Fit(parent, SetSummary(item.Items.Values), 28f, y + 28f, 240f, 16f, 12, Style.Dim);
         if (notes.Length > 0)
             Print(parent, notes, 28f, y + 44f, 240f, 16f, 12, warn ? Warn : Down, TextAnchor.MiddleLeft);
         return height;
@@ -1112,7 +1112,7 @@ internal sealed class Panel
                 break;
         }
         string sets = SetSummary(SlotOrder.Select(slot => current.Items.GetValueOrDefault(slot, gear.Worn(current.Avatar, slot))).Where(guid => guid != 0));
-        Print(parent, sets, X, y + 10f, Width, 18f, 13, Up, TextAnchor.MiddleLeft);
+        Fit(parent, sets, X, y + 10f, Width, 18f, 13, Up);
         Action apply = AskApply;
         Button_(parent, "Apply template", "X", Style.XboxX, X, y + 40f, Width, 40f, true, apply);
     }
@@ -1230,7 +1230,7 @@ internal sealed class Panel
         }
         float y = Top + 310f;
         IEnumerable<ulong> items = SlotOrder.Select(slot => chosen?.Items.GetValueOrDefault(slot, gear.Worn(who.Avatar, slot)) ?? gear.Worn(who.Avatar, slot)).Where(guid => guid != 0);
-        Print(parent, SetSummary(items), x + 14f, y, Width - 28f, 18f, 12, Up, TextAnchor.MiddleLeft);
+        Fit(parent, SetSummary(items), x + 14f, y, Width - 28f, 18f, 12, Up);
         y += 24f;
         var totals = new Dictionary<string, (float, bool)>();
         foreach (ulong guid in items)
@@ -1250,7 +1250,7 @@ internal sealed class Panel
         Box(parent, 0f, 0f, 1280f, 74f, Bar, null);
         Print(parent, Selected?.Name ?? "", 28f, 22f, 300f, 30f, 21, Style.Text, TextAnchor.MiddleLeft);
         Print(parent, $"{pickerSlot} for {Current.Name}", 340f, 26f, 400f, 24f, 16, Style.Cream, TextAnchor.MiddleLeft);
-        Print(parent, PickerState(), 28f, 80f, 840f, 20f, 13, Style.Dim, TextAnchor.MiddleLeft);
+        Fit(parent, PickerState(), 28f, 80f, 830f, 20f, 13, Style.Dim);
         if (pickerItems.Count == 0)
             Print(parent, "No items match", 28f, 340f, 830f, 24f, 16, Style.Dim, TextAnchor.MiddleCenter);
         int row = pickerCursor / Columns;
@@ -1444,7 +1444,7 @@ internal sealed class Panel
                 icon.raycastTarget = false;
                 TopLeft(icon.rectTransform, x + 34f, y + 4f, 30f, 30f);
             }
-            Print(parent, set.Name, x + 70f, y + 8f, ColumnWidth - 120f, 22f, 14, ink, TextAnchor.MiddleLeft);
+            Fit(parent, set.Name, x + 70f, y + 8f, ColumnWidth - 120f, 22f, 14, ink);
             Print(parent, set.Count.ToString(), x, y + 8f, ColumnWidth - 12f, 22f, 14, ink, TextAnchor.MiddleRight);
             int index = i;
             uint id = set.Id;
@@ -1456,7 +1456,7 @@ internal sealed class Panel
             const float CardX = 920f, CardWidth = 296f;
             Box(parent, CardX, Top, CardWidth, 636f, Paper, null);
             Box(parent, CardX, Top, CardWidth, 38f, Style.Hex(0xa35d2c), null);
-            Print(parent, shown.Name, CardX + 14f, Top + 8f, CardWidth - 28f, 22f, 15, Style.White, TextAnchor.MiddleLeft);
+            Fit(parent, shown.Name, CardX + 14f, Top + 6f, CardWidth - 28f, 26f, 15, Style.White);
             Box(parent, CardX, Top + 38f, CardWidth, 110f, Style.Hex(0x8a6340), null);
             if (icons.Get(shown.Icon) is { } sprite)
             {
@@ -1466,7 +1466,7 @@ internal sealed class Panel
                 TopLeft(art.rectTransform, CardX + CardWidth - 110f, Top + 42f, 100f, 100f);
             }
             float y = Top + 160f;
-            Print(parent, shown.Name, CardX + 14f, y, CardWidth - 28f, 20f, 14, Style.Hex(0x4f9a4c), TextAnchor.MiddleLeft);
+            Fit(parent, shown.Name, CardX + 14f, y, CardWidth - 28f, 20f, 14, Style.Hex(0x4f9a4c));
             y += 24f;
             foreach (string line in shown.Bonus.Split(" | "))
             {
@@ -1565,6 +1565,17 @@ internal sealed class Panel
         Text label = ui.Label(parent, "Text", text ?? "", size, color, alignment);
         TopLeft(label.rectTransform, x, y, width, height);
         return label;
+    }
+
+    // One line that shrinks to stay inside its box, for text as long as a set name.
+    private void Fit(Transform parent, string text, float x, float y, float width, float height, int size, Color color)
+    {
+        Text label = Print(parent, text, x, y, width, height, size, color, TextAnchor.MiddleLeft);
+        label.resizeTextForBestFit = true;
+        label.resizeTextMinSize = 8;
+        label.resizeTextMaxSize = size;
+        label.horizontalOverflow = HorizontalWrapMode.Wrap;
+        label.verticalOverflow = VerticalWrapMode.Truncate;
     }
 
     private void Wrap(Transform parent, string text, float x, float y, float width, float height, int size, Color color, TextAnchor alignment = TextAnchor.MiddleLeft)
