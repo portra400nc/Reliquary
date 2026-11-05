@@ -1454,7 +1454,7 @@ internal sealed class Panel
         {
             var shown = setRows[panelCursor];
             const float CardX = 920f, CardWidth = 296f;
-            Box(parent, CardX, Top, CardWidth, 400f, Paper, null);
+            Box(parent, CardX, Top, CardWidth, 636f, Paper, null);
             Box(parent, CardX, Top, CardWidth, 38f, Style.Hex(0xa35d2c), null);
             Print(parent, shown.Name, CardX + 14f, Top + 8f, CardWidth - 28f, 22f, 15, Style.White, TextAnchor.MiddleLeft);
             Box(parent, CardX, Top + 38f, CardWidth, 110f, Style.Hex(0x8a6340), null);
@@ -1470,8 +1470,9 @@ internal sealed class Panel
             y += 24f;
             foreach (string line in shown.Bonus.Split(" | "))
             {
-                Wrap(parent, line, CardX + 14f, y, CardWidth - 28f, 92f, 13, PaperInk, TextAnchor.UpperLeft);
-                y += 96f;
+                float height = (line.Length / 36 + 1) * 18f;
+                Wrap(parent, line, CardX + 14f, y, CardWidth - 28f, height, 13, PaperInk, TextAnchor.UpperLeft);
+                y += height + 8f;
             }
         }
         Box(parent, 0f, 740f, 1280f, 60f, Bar, null);
