@@ -74,7 +74,12 @@ internal sealed class MenuTile(Steps steps, Action<string> log)
         Transform content = list.transform.Find("Content");
         tile = content.Find(Name);
         if (tile)
+        {
+            // The game's list hides the items it did not fill each time the menu opens.
+            if (!tile.gameObject.activeSelf)
+                tile.gameObject.SetActive(true);
             return;
+        }
         tile = list.AddItemAddRefreshItemCount(content.GetChild(0).gameObject);
         tile.name = Name;
         MonoPlayerProfileMenuItem item = tile.GetComponent<MonoPlayerProfileMenuItem>();
