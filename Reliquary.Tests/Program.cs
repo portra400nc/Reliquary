@@ -54,6 +54,47 @@ loaded.Delete(loaded.Characters.Single());
 Same("", loaded.Teams.Single().Members.Single().Template, "deleting a template clears it from teams");
 Same(Skirk, loaded.Teams.Single().Members.Single().Avatar, "the team keeps that member");
 
+PickerItem Item(ulong guid, int level, uint set = 0, string secondary = "", bool worn = false, params (string, float)[] affixes)
+    => new(guid, level, 5, set, secondary, affixes.ToDictionary(a => a.Item1, a => a.Item2), worn);
+string Order(IEnumerable<PickerItem> items) => string.Join(",", items.Select(item => item.Guid));
+
+var bag = new[]
+{
+    Item(1, 20, 100, affixes: [("CRIT DMG", 0.20f)]),
+    Item(2, 20, 200, worn: true, affixes: [("CRIT DMG", 0.10f), ("CRIT Rate", 0.05f)]),
+    Item(3, 16, 100, affixes: [("CRIT Rate", 0.10f), ("ATK%", 0.04f)]),
+    Item(4, 20, 300, affixes: [("HP", 300f)]),
+};
+Same("1,2,4,3", Order(Picking.Apply(bag, new PickerQuery())), "with nothing chosen items sort by level");
+
+var bySet = new PickerQuery();
+bySet.Sets.Add(100);
+bySet.Sets.Add(300);
+Same("1,4,3", Order(Picking.Apply(bag, bySet)), "several sets can be selected");
+
+var onlyFree = new PickerQuery { OnlyFree = true };
+Same("1,4,3", Order(Picking.Apply(bag, onlyFree)), "worn items can be hidden");
+
+var critDmg = new PickerQuery();
+critDmg.ToggleSort("CRIT DMG");
+Same("1,2,4,3", Order(Picking.Apply(bag, critDmg)), "the chosen affix sorts by value, and items without it follow by level");
+
+var both = new PickerQuery();
+both.ToggleSort("CRIT DMG");
+both.ToggleSort("CRIT Rate");
+Same("2,1,3,4", Order(Picking.Apply(bag, both)), "items with the most chosen affixes come first");
+
+var limit = new PickerQuery();
+Same(true, limit.ToggleSort("A") && limit.ToggleSort("B") && limit.ToggleSort("C"), "three affixes can be chosen");
+Same(false, limit.ToggleSort("D"), "a fourth affix is refused");
+Same(true, limit.ToggleSort("B"), "choosing an affix again removes it");
+Same("A,C", string.Join(",", limit.Sort), "the others keep their order");
+
+var weapons = new[] { Item(5, 90, secondary: "CRIT DMG"), Item(6, 90, secondary: "ATK%"), Item(7, 1, secondary: "CRIT DMG") };
+var bySecondary = new PickerQuery();
+bySecondary.Secondary.Add("CRIT DMG");
+Same("5,7", Order(Picking.Apply(weapons, bySecondary)), "weapons filter by secondary attribute");
+
 Console.WriteLine($"Reliquary passed {checks} checks");
 
 sealed class Fake(Dictionary<(ulong, Slot), ulong> worn, HashSet<ulong> owned) : IGear

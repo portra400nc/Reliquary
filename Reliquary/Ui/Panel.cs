@@ -14,7 +14,7 @@ namespace Reliquary.Ui;
 internal sealed class Panel
 {
     private enum Tab { Characters, Teams }
-    private enum Layer { Main, Picker, Confirm, Menu, Rename }
+    private enum Layer { Main, Picker, WeaponFilter, ArtifactSort, SetFilter, Confirm, Menu, Rename }
 
     private static readonly KeyCode[] UiKeys = [KeyCode.Escape, KeyCode.Return, KeyCode.UpArrow, KeyCode.DownArrow, KeyCode.LeftArrow, KeyCode.RightArrow, KeyCode.Q, KeyCode.E, KeyCode.F, KeyCode.N, KeyCode.G, KeyCode.R, KeyCode.PageUp, KeyCode.PageDown];
     private static readonly Slot[] SlotOrder = [Slot.Weapon, Slot.Flower, Slot.Plume, Slot.Sands, Slot.Goblet, Slot.Circlet];
@@ -50,8 +50,14 @@ internal sealed class Panel
     private bool inSlots;
     private Slot pickerSlot;
     private int pickerCursor;
-    private bool pickerFree;
+    private readonly PickerQuery weaponQuery = new();
+    private readonly PickerQuery artifactQuery = new();
+    private readonly Dictionary<Slot, List<string>> sortBySlot = [];
+    private List<string> savedChoice = [];
+    private int panelCursor;
     private List<ulong> pickerItems = [];
+    private List<PickerItem> pickerSource = [];
+    private List<(uint Id, string Name, string Icon, string Bonus, int Count)> setRows = [];
     private Plan plan;
     private string planTitle = "";
     private string rename = "";
@@ -195,6 +201,9 @@ internal sealed class Panel
                     Close();
                 break;
             case Layer.Picker: PickerInput(now); break;
+            case Layer.WeaponFilter: WeaponFilterInput(now); break;
+            case Layer.ArtifactSort: ArtifactSortInput(now); break;
+            case Layer.SetFilter: SetFilterInput(now); break;
             case Layer.Confirm:
                 if (Pressed(PadButtons.A, KeyCode.Return))
                     Confirm();
@@ -296,15 +305,73 @@ internal sealed class Panel
         else if (Repeat(PadButtons.DpadDown, KeyCode.DownArrow, now))
             MovePicker(Columns);
         else if (Pressed(PadButtons.X, KeyCode.F))
-        {
-            pickerFree = !pickerFree;
-            FillPicker();
-            dirty = true;
-        }
+            ToggleFree();
+        else if (Pressed(PadButtons.Y, KeyCode.N))
+            OpenFilter();
+        else if (Pressed(PadButtons.View, KeyCode.G))
+            OpenSort();
         else if (Pressed(PadButtons.A, KeyCode.Return))
             Pick();
         else if (Pressed(PadButtons.B, KeyCode.Escape))
             Back();
+    }
+
+    private void WeaponFilterInput(float now)
+    {
+        if (Repeat(PadButtons.DpadUp, KeyCode.UpArrow, now))
+            MovePanel(-1, WeaponAttributes.Length);
+        else if (Repeat(PadButtons.DpadDown, KeyCode.DownArrow, now))
+            MovePanel(1, WeaponAttributes.Length);
+        else if (Pressed(PadButtons.A, KeyCode.Return))
+            ToggleSecondary(WeaponAttributes[panelCursor].Key);
+        else
+            PanelActions(() => weaponQuery.Secondary.Clear(), () => { weaponQuery.Secondary.Clear(); weaponQuery.Secondary.UnionWith(savedChoice); });
+    }
+
+    private void ArtifactSortInput(float now)
+    {
+        if (Repeat(PadButtons.DpadUp, KeyCode.UpArrow, now))
+            MovePanel(-1, SortAffixes.Length);
+        else if (Repeat(PadButtons.DpadDown, KeyCode.DownArrow, now))
+            MovePanel(1, SortAffixes.Length);
+        else if (Pressed(PadButtons.A, KeyCode.Return))
+            ToggleSort(SortAffixes[panelCursor].Key);
+        else
+            PanelActions(() => SortList().Clear(), () => { SortList().Clear(); SortList().AddRange(savedChoice); });
+    }
+
+    private void SetFilterInput(float now)
+    {
+        if (Repeat(PadButtons.DpadUp, KeyCode.UpArrow, now))
+            MovePanel(-2, setRows.Count, false);
+        else if (Repeat(PadButtons.DpadDown, KeyCode.DownArrow, now))
+            MovePanel(2, setRows.Count, false);
+        else if (Repeat(PadButtons.DpadLeft, KeyCode.LeftArrow, now))
+            MovePanel(-1, setRows.Count, false);
+        else if (Repeat(PadButtons.DpadRight, KeyCode.RightArrow, now))
+            MovePanel(1, setRows.Count, false);
+        else if (Pressed(PadButtons.A, KeyCode.Return) && panelCursor < setRows.Count)
+            ToggleSet(setRows[panelCursor].Id);
+        else
+            PanelActions(() => artifactQuery.Sets.Clear(), () => { artifactQuery.Sets.Clear(); artifactQuery.Sets.UnionWith(savedChoice.Select(uint.Parse)); });
+    }
+
+    // X keeps the choice, B puts back what it was when the panel opened, and L3 clears it.
+    private void PanelActions(Action reset, Action restore)
+    {
+        if (Pressed(PadButtons.X, KeyCode.F))
+            ClosePanel();
+        else if (Pressed(PadButtons.LeftStick, KeyCode.Backspace))
+        {
+            reset();
+            FillPicker();
+            dirty = true;
+        }
+        else if (Pressed(PadButtons.B, KeyCode.Escape))
+        {
+            restore();
+            ClosePanel();
+        }
     }
 
     private void MenuInput(float now)
@@ -483,10 +550,21 @@ internal sealed class Panel
         dirty = true;
     }
 
+    private PickerQuery Query => pickerSlot == Slot.Weapon ? weaponQuery : artifactQuery;
+
+    private List<string> SortList()
+    {
+        if (!sortBySlot.TryGetValue(pickerSlot, out List<string> list))
+            sortBySlot[pickerSlot] = list = [];
+        return list;
+    }
+
     private void OpenPicker(Slot slot)
     {
         pickerSlot = slot;
-        pickerFree = false;
+        pickerSource = [.. gear.Items(slot).Select(PickerEntry).OfType<PickerItem>()];
+        if (slot == Slot.Weapon && gear.WeaponType(gear.Worn(Current.Guid, Slot.Weapon)) is var kind and not -1)
+            pickerSource = [.. pickerSource.Where(item => gear.WeaponType(item.Guid) == kind)];
         FillPicker();
         ulong chosen = Selected?.Items.GetValueOrDefault(slot) ?? 0;
         pickerCursor = Math.Max(0, pickerItems.IndexOf(chosen));
@@ -494,20 +572,106 @@ internal sealed class Panel
         dirty = true;
     }
 
+    private PickerItem PickerEntry(ulong guid)
+    {
+        if (gear.View(guid) is not { } view)
+            return null;
+        var affixes = new Dictionary<string, float>();
+        foreach (ItemStat stat in view.Subs.Append(view.Main).OfType<ItemStat>())
+            affixes[stat.Label] = stat.Value;
+        return new PickerItem(guid, view.Level, view.Rarity, view.Set, view.Subs.FirstOrDefault()?.Label ?? "", affixes, gear.Holder(guid) != null);
+    }
+
     private void FillPicker()
     {
-        pickerItems = [.. gear.Items(pickerSlot).Where(item => !pickerFree || gear.Holder(item) == null)
-            .OrderByDescending(item => gear.View(item)?.Level ?? 0).ThenByDescending(item => gear.View(item)?.Rarity ?? 0)];
-        if (pickerSlot == Slot.Weapon)
-        {
-            ItemView worn = gear.View(gear.Worn(Current.Guid, Slot.Weapon));
-            if (worn != null)
-                pickerItems = [.. pickerItems.Where(item => WeaponKind(item) == WeaponKind(worn.Guid))];
-        }
+        PickerQuery query = Query;
+        query.Sort.Clear();
+        if (pickerSlot != Slot.Weapon)
+            query.Sort.AddRange(SortList());
+        pickerItems = [.. Picking.Apply(pickerSource, query).Select(item => item.Guid)];
         pickerCursor = Math.Clamp(pickerCursor, 0, Math.Max(0, pickerItems.Count - 1));
     }
 
-    private int WeaponKind(ulong item) => gear.WeaponType(item);
+    private void ToggleFree()
+    {
+        Query.OnlyFree = !Query.OnlyFree;
+        FillPicker();
+        dirty = true;
+    }
+
+    private void OpenFilter()
+    {
+        panelCursor = 0;
+        if (pickerSlot == Slot.Weapon)
+        {
+            savedChoice = [.. weaponQuery.Secondary];
+            layer = Layer.WeaponFilter;
+        }
+        else
+        {
+            savedChoice = [.. artifactQuery.Sets.Select(set => set.ToString())];
+            var counts = pickerSource.GroupBy(item => item.Set).ToDictionary(group => group.Key, group => group.Count());
+            setRows = [.. ArtifactSets.All.Where(set => counts.ContainsKey(set.Id)).Select(set => (set.Id, set.Name, set.Icon, set.Bonus, counts[set.Id]))];
+            setRows.AddRange(counts.Keys.Where(id => ArtifactSets.All.All(set => set.Id != id)).Select(id => (id, $"Set {id}", "", "", counts[id])));
+            layer = Layer.SetFilter;
+        }
+        dirty = true;
+    }
+
+    private void OpenSort()
+    {
+        if (pickerSlot == Slot.Weapon)
+            return;
+        panelCursor = 0;
+        savedChoice = [.. SortList()];
+        layer = Layer.ArtifactSort;
+        dirty = true;
+    }
+
+    private void MovePanel(int by, int count, bool wrap = true)
+    {
+        if (count > 0)
+            panelCursor = wrap ? (panelCursor + by + count) % count : Math.Clamp(panelCursor + by, 0, count - 1);
+        dirty = true;
+    }
+
+    private void ClosePanel()
+    {
+        FillPicker();
+        layer = Layer.Picker;
+        dirty = true;
+    }
+
+    private void ToggleSecondary(string key)
+    {
+        if (!weaponQuery.Secondary.Remove(key))
+            weaponQuery.Secondary.Add(key);
+        FillPicker();
+        dirty = true;
+    }
+
+    private void ToggleSet(uint id)
+    {
+        if (!artifactQuery.Sets.Remove(id))
+            artifactQuery.Sets.Add(id);
+        FillPicker();
+        dirty = true;
+    }
+
+    private void ToggleSort(string key)
+    {
+        var query = new PickerQuery();
+        query.Sort.AddRange(SortList());
+        if (query.ToggleSort(key))
+        {
+            SortList().Clear();
+            SortList().AddRange(query.Sort);
+        }
+        else
+            Toast($"Choose up to {PickerQuery.MaxSortAffixes} affixes", "");
+        FillPicker();
+        dirty = true;
+    }
 
     private void MovePicker(int by)
     {
@@ -723,6 +887,17 @@ internal sealed class Panel
         switch (layer)
         {
             case Layer.Picker: DrawPicker(rect); break;
+            case Layer.WeaponFilter:
+                DrawPicker(rect);
+                hits.Clear();
+                DrawWeaponFilter(rect);
+                break;
+            case Layer.ArtifactSort:
+                DrawPicker(rect);
+                hits.Clear();
+                DrawArtifactSort(rect);
+                break;
+            case Layer.SetFilter: DrawSetFilter(rect); break;
             default:
                 DrawTop(rect);
                 if (tab == Tab.Characters) DrawCharacters(rect); else DrawTeams(rect);
@@ -811,6 +986,16 @@ internal sealed class Panel
     }
 
     private const int PickerColumns = 7, PickerRows = 4;
+    private static readonly (string Key, string Label)[] WeaponAttributes =
+    [
+        ("CRIT Rate", "CRIT Rate"), ("CRIT DMG", "CRIT DMG"), ("ATK%", "ATK Percentage"), ("DEF%", "DEF Percentage"), ("HP%", "HP Percentage"),
+        ("Elemental Mastery", "Elemental Mastery"), ("Energy Recharge", "Energy Recharge"), ("Physical DMG Bonus", "Physical DMG Bonus"),
+    ];
+    private static readonly (string Key, string Label)[] SortAffixes =
+    [
+        ("CRIT DMG", "CRIT DMG"), ("CRIT Rate", "CRIT Rate"), ("ATK%", "ATK Percentage"), ("ATK", "ATK"), ("DEF", "DEF"), ("DEF%", "DEF Percentage"),
+        ("HP", "HP"), ("HP%", "HP Percentage"), ("Elemental Mastery", "Elemental Mastery"), ("Energy Recharge", "Energy Recharge"),
+    ];
 
     private enum Selection { None, Current, Focus }
 
@@ -951,7 +1136,7 @@ internal sealed class Panel
         Box(parent, 0f, 740f, 1280f, 60f, Bar, null);
         if (!padLayout)
         {
-            Print(parent, "Esc  Close", 1100f, 758f, 160f, 24f, 14, Style.Text, TextAnchor.MiddleRight);
+            EscHint(parent, "Close");
             Action menu = OpenMenu;
             Button_(parent, "Rename or delete", "", Style.Text, 24f, 750f, 180f, 36f, false, menu);
             return;
@@ -1012,7 +1197,7 @@ internal sealed class Panel
             Button_(parent, "Save party's worn gear as team", "", Style.Text, 24f, 750f, 290f, 36f, false, save);
             Button_(parent, "Rename or delete", "", Style.Text, 324f, 750f, 180f, 36f, false, menu);
             Button_(parent, "Apply team", "", Style.Text, 960f, 750f, 150f, 36f, true, apply);
-            Print(parent, "Esc  Close", 1120f, 758f, 140f, 24f, 14, Style.Text, TextAnchor.MiddleRight);
+            EscHint(parent, "Close");
         }
     }
 
@@ -1065,7 +1250,9 @@ internal sealed class Panel
         Box(parent, 0f, 0f, 1280f, 74f, Bar, null);
         Print(parent, Selected?.Name ?? "", 28f, 22f, 300f, 30f, 21, Style.Text, TextAnchor.MiddleLeft);
         Print(parent, $"{pickerSlot} for {Current.Name}", 340f, 26f, 400f, 24f, 16, Style.Cream, TextAnchor.MiddleLeft);
-        Print(parent, pickerFree ? "Showing items nobody wears" : "Showing all items", 28f, 80f, 400f, 20f, 13, Style.Dim, TextAnchor.MiddleLeft);
+        Print(parent, PickerState(), 28f, 80f, 840f, 20f, 13, Style.Dim, TextAnchor.MiddleLeft);
+        if (pickerItems.Count == 0)
+            Print(parent, "No items match", 28f, 340f, 830f, 24f, 16, Style.Dim, TextAnchor.MiddleCenter);
         int row = pickerCursor / Columns;
         int first = Math.Max(0, Math.Min(row - 1, (pickerItems.Count - 1) / Columns - Rows + 1)) * Columns;
         for (int i = first; i < pickerItems.Count && i < first + Columns * Rows; i++)
@@ -1108,15 +1295,204 @@ internal sealed class Panel
             Button_(parent, "Use in this template", "A", Style.XboxA, Side, 504f, Width, 42f, true, pick);
         }
         Box(parent, 0f, 740f, 1280f, 60f, Bar, null);
+        bool weapon = pickerSlot == Slot.Weapon;
+        string freeText = Query.OnlyFree ? "Show all items" : "Items nobody wears";
         if (padLayout)
         {
-            Glyph(parent, "X", Style.XboxX, 28f, 756f);
-            Print(parent, pickerFree ? "Show all items" : "Show items nobody wears", 60f, 758f, 260f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
+            float x = 28f;
+            Glyph(parent, "Y", Style.XboxY, x, 756f);
+            Print(parent, "Filter", x + 32f, 758f, 60f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
+            x += 96f;
+            if (!weapon)
+            {
+                Pill(parent, "View", x, 758f);
+                Print(parent, "Sort", x + 40f, 758f, 50f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
+                x += 92f;
+            }
+            Glyph(parent, "X", Style.XboxX, x, 756f);
+            Print(parent, freeText, x + 32f, 758f, 180f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
+            Glyph(parent, "A", Style.XboxA, 1010f, 756f);
+            Print(parent, "Use in template", 1040f, 758f, 130f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
             Glyph(parent, "B", Style.XboxB, 1170f, 756f);
             Print(parent, "Back", 1200f, 758f, 60f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
         }
         else
-            Print(parent, "Esc  Back", 1100f, 758f, 160f, 24f, 14, Style.Text, TextAnchor.MiddleRight);
+        {
+            Action filter = OpenFilter, sort = OpenSort, free = ToggleFree, pick = Pick;
+            float x = 24f;
+            Button_(parent, "Filter", "", Style.Text, x, 750f, 90f, 36f, false, filter);
+            x += 100f;
+            if (!weapon)
+            {
+                Button_(parent, "Sort", "", Style.Text, x, 750f, 80f, 36f, false, sort);
+                x += 90f;
+            }
+            Button_(parent, freeText, "", Style.Text, x, 750f, 180f, 36f, false, free);
+            Button_(parent, "Use in template", "", Style.Text, 990f, 750f, 160f, 36f, true, pick);
+            EscHint(parent, "Back");
+        }
+    }
+
+    private string PickerState()
+    {
+        var filters = new List<string>();
+        if (pickerSlot == Slot.Weapon)
+            filters.AddRange(WeaponAttributes.Where(row => weaponQuery.Secondary.Contains(row.Key)).Select(row => row.Label));
+        else
+            filters.AddRange(artifactQuery.Sets.Select(ArtifactSets.Name));
+        string filter = filters.Count == 0 ? "None" : filters.Count <= 2 ? string.Join(", ", filters) : $"{filters[0]} and {filters.Count - 1} more";
+        string sort = pickerSlot == Slot.Weapon || SortList().Count == 0 ? "Level" : string.Join(", ", SortList().Select(key => SortAffixes.First(row => row.Key == key).Label));
+        return $"Filter: {filter}    Sort: {sort}    {pickerItems.Count} items{(Query.OnlyFree ? ", nobody wears them" : "")}";
+    }
+
+    private void DrawWeaponFilter(RectTransform parent)
+    {
+        DrawPanelFrame(parent, "Weapons filter", "Secondary attributes", "");
+        for (int i = 0; i < WeaponAttributes.Length; i++)
+        {
+            var (key, label) = WeaponAttributes[i];
+            int count = pickerSource.Count(item => item.Secondary == key);
+            int index = i;
+            OptionRow(parent, 16f, 118f + i * 46f, 360f, label, weaponQuery.Secondary.Contains(key) ? "" : null, count.ToString(), count == 0, i == panelCursor, () => { panelCursor = index; ToggleSecondary(key); });
+        }
+        DrawPanelFooter(parent, () => { weaponQuery.Secondary.Clear(); FillPicker(); });
+    }
+
+    private void DrawArtifactSort(RectTransform parent)
+    {
+        DrawPanelFrame(parent, "Sort order", $"Sort by affix, {pickerSlot}", $"Choose up to {PickerQuery.MaxSortAffixes}");
+        for (int i = 0; i < SortAffixes.Length; i++)
+        {
+            var (key, label) = SortAffixes[i];
+            int order = SortList().IndexOf(key);
+            int index = i;
+            OptionRow(parent, 16f, 140f + i * 46f, 360f, label, order >= 0 ? (order + 1).ToString() : null, "", false, i == panelCursor, () => { panelCursor = index; ToggleSort(key); });
+        }
+        DrawPanelFooter(parent, () => { SortList().Clear(); FillPicker(); });
+    }
+
+    private void DrawPanelFrame(RectTransform parent, string title, string section, string hint)
+    {
+        Box(parent, 0f, 0f, 392f, 800f, Style.Hex(0x202938, 0.985f), null);
+        Print(parent, title, 22f, 34f, 340f, 26f, 18, Style.Cream, TextAnchor.MiddleLeft);
+        Box(parent, 16f, 70f, 360f, 1f, Style.Hex(0xd3bc8e, 0.3f), null);
+        Print(parent, section, 22f, 84f, 340f, 22f, 14, Style.Cream, TextAnchor.MiddleLeft);
+        if (hint.Length > 0)
+            Print(parent, hint, 22f, 108f, 340f, 20f, 12, Style.Dim, TextAnchor.MiddleLeft);
+    }
+
+    private void DrawPanelFooter(RectTransform parent, Action reset)
+    {
+        Box(parent, 0f, 740f, 392f, 60f, Style.Hex(0x181f2c), null);
+        if (padLayout)
+        {
+            Glyph(parent, "L3", Style.Text, 40f, 756f);
+            Print(parent, "Reset", 70f, 758f, 60f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
+            Glyph(parent, "X", Style.XboxX, 150f, 756f);
+            Print(parent, "Confirm", 180f, 758f, 70f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
+            Glyph(parent, "A", Style.XboxA, 270f, 756f);
+            Print(parent, "Select", 300f, 758f, 60f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
+            return;
+        }
+        Action confirm = ClosePanel;
+        Button_(parent, "Reset", "", Style.Text, 80f, 750f, 100f, 36f, false, reset);
+        Button_(parent, "Confirm", "", Style.Text, 192f, 750f, 110f, 36f, true, confirm);
+    }
+
+    // mark is null when the row is not selected, and the text to show in its circle when it is.
+    private void OptionRow(RectTransform parent, float x, float y, float width, string label, string mark, string count, bool dim, bool focus, Action click)
+    {
+        Color ink = dim ? Style.Hex(0xece5d8, 0.35f) : Style.Text;
+        Box(parent, x, y, width, 40f, Style.Hex(0x0a101c, 0.3f), null);
+        Image radio = Picture(parent, "Radio", Shapes.Knob, mark != null ? Up : Style.Hex(0xece5d8, 0.22f));
+        TopLeft(radio.rectTransform, x + 12f, y + 12f, 16f, 16f);
+        if (!string.IsNullOrEmpty(mark))
+        {
+            Text number = ui.Label(radio.rectTransform, "Number", mark, 11, Style.BackInk, TextAnchor.MiddleCenter);
+            Fill(number.rectTransform);
+        }
+        Print(parent, label, x + 38f, y + 9f, width - 90f, 22f, 14, ink, TextAnchor.MiddleLeft);
+        Print(parent, count, x, y + 9f, width - 12f, 22f, 14, ink, TextAnchor.MiddleRight);
+        if (focus)
+            Frame(parent, x, y, width, 40f);
+        Hit(parent, x, y, width, 40f, click);
+    }
+
+    private void DrawSetFilter(RectTransform parent)
+    {
+        const int PerColumn = 14;
+        const float Left = 64f, Top = 86f, ColumnWidth = 411f, RowHeight = 45f;
+        Box(parent, 0f, 0f, 1280f, 800f, Style.Hex(0x151c2a, 0.97f), null);
+        Print(parent, "Artifact set filter", 64f, 24f, 500f, 24f, 17, Style.Cream, TextAnchor.MiddleLeft);
+        Print(parent, "Artifacts that meet the requirements will be shown", 64f, 48f, 600f, 18f, 12, Style.Dim, TextAnchor.MiddleLeft);
+        Box(parent, 64f, 72f, 1152f, 1f, Style.Hex(0xd3bc8e, 0.3f), null);
+        int row = panelCursor / 2;
+        int firstRow = Math.Max(0, Math.Min(row - PerColumn / 2, (setRows.Count + 1) / 2 - PerColumn));
+        for (int i = firstRow * 2; i < setRows.Count && i < (firstRow + PerColumn) * 2; i++)
+        {
+            var set = setRows[i];
+            float x = Left + (i % 2) * (ColumnWidth + 14f), y = Top + (i / 2 - firstRow) * RowHeight;
+            bool focus = i == panelCursor, selected = artifactQuery.Sets.Contains(set.Id);
+            Box(parent, x, y, ColumnWidth, 38f, focus ? Paper : Style.Hex(0x283448, 0.6f), null);
+            Color ink = focus ? PaperInk : Style.Text;
+            Image radio = Picture(parent, "Radio", Shapes.Knob, selected ? Up : focus ? Style.Hex(0x3f3b30, 0.25f) : Style.Hex(0xece5d8, 0.22f));
+            TopLeft(radio.rectTransform, x + 12f, y + 11f, 16f, 16f);
+            if (icons.Small(set.Icon) is { } small)
+            {
+                var icon = Node("Icon", parent).gameObject.AddComponent<RawImage>();
+                icon.texture = small;
+                icon.raycastTarget = false;
+                TopLeft(icon.rectTransform, x + 34f, y + 4f, 30f, 30f);
+            }
+            Print(parent, set.Name, x + 70f, y + 8f, ColumnWidth - 120f, 22f, 14, ink, TextAnchor.MiddleLeft);
+            Print(parent, set.Count.ToString(), x, y + 8f, ColumnWidth - 12f, 22f, 14, ink, TextAnchor.MiddleRight);
+            int index = i;
+            uint id = set.Id;
+            Hit(parent, x, y, ColumnWidth, 38f, () => { panelCursor = index; ToggleSet(id); });
+        }
+        if (panelCursor < setRows.Count)
+        {
+            var shown = setRows[panelCursor];
+            const float CardX = 920f, CardWidth = 296f;
+            Box(parent, CardX, Top, CardWidth, 400f, Paper, null);
+            Box(parent, CardX, Top, CardWidth, 38f, Style.Hex(0xa35d2c), null);
+            Print(parent, shown.Name, CardX + 14f, Top + 8f, CardWidth - 28f, 22f, 15, Style.White, TextAnchor.MiddleLeft);
+            Box(parent, CardX, Top + 38f, CardWidth, 110f, Style.Hex(0x8a6340), null);
+            if (icons.Get(shown.Icon) is { } sprite)
+            {
+                Image art = Picture(parent, "Art", null, Style.White);
+                art.sprite = sprite;
+                art.preserveAspect = true;
+                TopLeft(art.rectTransform, CardX + CardWidth - 110f, Top + 42f, 100f, 100f);
+            }
+            float y = Top + 160f;
+            Print(parent, shown.Name, CardX + 14f, y, CardWidth - 28f, 20f, 14, Style.Hex(0x4f9a4c), TextAnchor.MiddleLeft);
+            y += 24f;
+            foreach (string line in shown.Bonus.Split(" | "))
+            {
+                Wrap(parent, line, CardX + 14f, y, CardWidth - 28f, 92f, 13, PaperInk, TextAnchor.UpperLeft);
+                y += 96f;
+            }
+        }
+        Box(parent, 0f, 740f, 1280f, 60f, Bar, null);
+        if (padLayout)
+        {
+            Glyph(parent, "L3", Style.Text, 28f, 756f);
+            Print(parent, "Reset", 58f, 758f, 80f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
+            Glyph(parent, "X", Style.XboxX, 890f, 756f);
+            Print(parent, "Confirm filter", 920f, 758f, 120f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
+            Glyph(parent, "A", Style.XboxA, 1060f, 756f);
+            Print(parent, "Select", 1090f, 758f, 70f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
+            Glyph(parent, "B", Style.XboxB, 1170f, 756f);
+            Print(parent, "Leave", 1200f, 758f, 60f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
+        }
+        else
+        {
+            Action confirm = ClosePanel;
+            Button_(parent, "Reset", "", Style.Text, 24f, 750f, 100f, 36f, false, () => { artifactQuery.Sets.Clear(); FillPicker(); });
+            Button_(parent, "Confirm filter", "", Style.Text, 960f, 750f, 150f, 36f, true, confirm);
+            EscHint(parent, "Leave");
+        }
     }
 
     private void DrawConfirm(RectTransform parent)
@@ -1217,6 +1593,16 @@ internal sealed class Panel
         RectTransform rect = Node("Hit", parent);
         TopLeft(rect, x, y, width, height);
         hits.Add((rect, click));
+    }
+
+    // The Esc keycap and what it does, at the right end of the footer.
+    private void EscHint(Transform parent, string action)
+    {
+        Image cap = Picture(parent, "Key", Shapes.Bumper, Style.Light);
+        TopLeft(cap.rectTransform, 1170f, 757f, 36f, 24f);
+        Text letter = ui.Label(cap.rectTransform, "Text", "Esc", 12, Style.BackInk, TextAnchor.MiddleCenter);
+        Fill(letter.rectTransform);
+        Print(parent, action, 1212f, 758f, 60f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
     }
 
     private void Glyph(Transform parent, string letter, Color ink, float x, float y)

@@ -13,6 +13,7 @@ internal enum PadButtons : ushort
     DpadRight = 0x0008,
     Menu = 0x0010,
     View = 0x0020,
+    LeftStick = 0x0040,
     LT = 0x0400,
     RT = 0x0800,
     LB = 0x0100,
@@ -110,7 +111,7 @@ internal static class Pad
     private static void Read(XInputState raw)
     {
         Held |= (PadButtons)raw.buttons & (PadButtons.DpadUp | PadButtons.DpadDown | PadButtons.DpadLeft | PadButtons.DpadRight
-            | PadButtons.LB | PadButtons.RB | PadButtons.A | PadButtons.B | PadButtons.X | PadButtons.Y | PadButtons.Menu | PadButtons.View);
+            | PadButtons.LB | PadButtons.RB | PadButtons.A | PadButtons.B | PadButtons.X | PadButtons.Y | PadButtons.Menu | PadButtons.View | PadButtons.LeftStick);
         if (raw.leftTrigger > TriggerPress)
             Held |= PadButtons.LT;
         if (raw.rightTrigger > TriggerPress)
