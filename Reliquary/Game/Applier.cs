@@ -1,6 +1,6 @@
 namespace Reliquary;
 
-// Sends one wear request at a time and waits for the server's change to reach the slot before the next, because each
+// Sends one equip request at a time and waits for the server's change to reach the slot before the next, because each
 // swap decides what the next request finds. The whole queue stops at the first refusal.
 internal sealed class Applier(Gear gear, Action<IReadOnlyList<Move>, Move?> finished)
 {
@@ -26,7 +26,7 @@ internal sealed class Applier(Gear gear, Action<IReadOnlyList<Move>, Move?> fini
     {
         if (!waiting)
             return;
-        if (gear.Worn(current.Avatar, current.Slot) == current.Item)
+        if (gear.Equipped(current.Avatar, current.Slot) == current.Item)
         {
             done.Add(current);
             Next();

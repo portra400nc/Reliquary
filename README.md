@@ -16,7 +16,7 @@ Each character has their own templates. A slot left empty stays as it is when yo
 | Change character | LB, RB | Page Up, Page Down |
 | List all characters | L3 | C, or the All characters button |
 | Create new template | Y | N |
-| Save worn gear as template | View | G |
+| Save equipped gear as template | View | G |
 | Change an item | A on a slot | Enter on a slot |
 | Apply template | X | F |
 | Rename or delete | Menu | R |
@@ -40,20 +40,20 @@ The list shows your party first, then the rest by level. The screen behind it fo
 |---|---|---|
 | Filter | Y | N, or the Filter button |
 | Sort artifacts | View | G, or the Sort button |
-| Show only items nobody wears | X | F, or the button |
+| Show only unequipped items | X | F, or the button |
 | Use the item | A | Enter, or click the item |
 
 Weapons filter by secondary attribute and always sort by level. Artifacts filter by set, and sort by up to three affixes: artifacts with the most chosen affixes come first, then the highest value of each in the order you chose them. Main stats count. In a filter or sort panel, X keeps your choice, B or Esc puts it back, and L3 or Backspace clears it.
 
 ## Teams tab
 
-Press LT or RT to switch tabs (Q or E on a keyboard). Save the party's worn gear as a team with Y. A team template names one character template per member, so a change to that template reaches every team that uses it. Choose a member with left and right, and their template with up and down.
+Press LT or RT to switch tabs (Q or E on a keyboard). Save the party's equipped gear as a team with Y. A team template names one character template per member, so a change to that template reaches every team that uses it. Choose a member with left and right, and their template with up and down.
 
 Reliquary will not apply a team when two members need the same item.
 
 ## Applying
 
-Reliquary lists every change first. Wearing an item another character holds gives that character your old item, as in the game. Press Y right after applying to undo it. Items you no longer own are skipped.
+Reliquary lists every change first. Equipping an item another character holds gives that character your old item, as in the game. Press Y right after applying to undo it. Items you no longer own are skipped.
 
 ## Limits
 

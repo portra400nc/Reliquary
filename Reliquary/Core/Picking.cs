@@ -1,7 +1,7 @@
 namespace Reliquary;
 
 // What the item picker needs to know about one item. Affixes are the item's stats by label, main stat included.
-public sealed record PickerItem(ulong Guid, int Level, int Rarity, uint Set, string Secondary, IReadOnlyDictionary<string, float> Affixes, bool Worn);
+public sealed record PickerItem(ulong Guid, int Level, int Rarity, uint Set, string Secondary, IReadOnlyDictionary<string, float> Affixes, bool Equipped);
 
 public sealed class PickerQuery
 {
@@ -29,7 +29,7 @@ public static class Picking
     public static List<PickerItem> Apply(IEnumerable<PickerItem> items, PickerQuery query)
     {
         IEnumerable<PickerItem> kept = items.Where(item =>
-            (!query.OnlyFree || !item.Worn)
+            (!query.OnlyFree || !item.Equipped)
             && (query.Sets.Count == 0 || query.Sets.Contains(item.Set))
             && (query.Secondary.Count == 0 || query.Secondary.Contains(item.Secondary)));
         if (query.Sort.Count == 0)

@@ -63,14 +63,14 @@ internal sealed unsafe class Gear(Steps steps, Action<string> log) : IGear
         return Singleton<PIDAHDPFKBG>._instance?.DGCCNKPDKOK(id)?.TryCast<LOPOKBINJOP>()?.INIOMMGOEMI() ?? 0;
     }
 
-    public ulong Worn(ulong avatar, Slot slot) => Actor(avatar)?.CCGCAHDBDEJ((KGLHOFEHMGC)slot) ?? 0;
+    public ulong Equipped(ulong avatar, Slot slot) => Actor(avatar)?.CCGCAHDBDEJ((KGLHOFEHMGC)slot) ?? 0;
 
     public bool Owned(ulong item) => Bag().PPIGBKFJBOC(item) != null;
 
     public ulong? Holder(ulong item) => holders.TryGetValue(item, out ulong avatar) ? avatar : null;
 
-    public Dictionary<Slot, ulong> WornItems(ulong avatar)
-        => Slots.Select(slot => (slot, Worn(avatar, slot))).Where(pair => pair.Item2 != 0).ToDictionary(pair => pair.slot, pair => pair.Item2);
+    public Dictionary<Slot, ulong> EquippedItems(ulong avatar)
+        => Slots.Select(slot => (slot, Equipped(avatar, slot))).Where(pair => pair.Item2 != 0).ToDictionary(pair => pair.slot, pair => pair.Item2);
 
     // The bag's items for one slot, newest first as the game lists them last.
     public IReadOnlyList<ulong> Items(Slot slot)
@@ -95,7 +95,7 @@ internal sealed unsafe class Gear(Steps steps, Action<string> log) : IGear
 
     public int WeaponType(ulong guid) => Bag().PPIGBKFJBOC(guid)?.TryCast<GPBLKEHGFPG>()?.KNOHDKCNNMK()?.FCKOGGBOKIG() is { } type ? (int)type : -1;
 
-    // One wear request, the same message and send path as the game's equip dialog.
+    // One equip request, the same message and send path as the game's equip dialog.
     public void Send(ulong avatar, ulong item)
     {
         DHABIHPMOAH net = Singleton<DHABIHPMOAH>._instance ?? throw new InvalidOperationException("no network manager");

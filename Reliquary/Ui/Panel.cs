@@ -289,7 +289,7 @@ internal sealed partial class Panel
         else if (Pressed(PadButtons.Y, KeyCode.N))
             undoOrCreate();
         else if (Pressed(PadButtons.View, KeyCode.G))
-            SaveWorn();
+            SaveEquipped();
         else if (Pressed(PadButtons.LeftStick, KeyCode.C))
             OpenChooser();
         else if (Pressed(PadButtons.Menu, KeyCode.R) && Selected != null)
@@ -531,12 +531,12 @@ internal sealed partial class Panel
         dirty = true;
     }
 
-    private void SaveWorn()
+    private void SaveEquipped()
     {
-        library.Characters.Add(new CharacterTemplate { Avatar = Current.Guid, Name = $"Template {Templates.Count + 1}", Items = gear.WornItems(Current.Guid) });
+        library.Characters.Add(new CharacterTemplate { Avatar = Current.Guid, Name = $"Template {Templates.Count + 1}", Items = gear.EquippedItems(Current.Guid) });
         Save();
         template = Templates.Count - 1;
-        Toast("Saved worn gear as a template", "");
+        Toast("Saved equipped gear as a template", "");
         dirty = true;
     }
 
@@ -545,14 +545,14 @@ internal sealed partial class Panel
         var team_ = new TeamTemplate { Name = $"Team {library.Teams.Count + 1}" };
         foreach (ulong guid in gear.Party)
         {
-            var saved = new CharacterTemplate { Avatar = guid, Name = team_.Name, Items = gear.WornItems(guid) };
+            var saved = new CharacterTemplate { Avatar = guid, Name = team_.Name, Items = gear.EquippedItems(guid) };
             library.Characters.Add(saved);
             team_.Members.Add(new TeamMember { Avatar = guid, Template = saved.Id });
         }
         library.Teams.Add(team_);
         team = library.Teams.Count - 1;
         Save();
-        Toast("Saved the party's worn gear as a team", "");
+        Toast("Saved the party's equipped gear as a team", "");
         dirty = true;
     }
 
@@ -598,7 +598,7 @@ internal sealed partial class Panel
     {
         pickerSlot = slot;
         pickerSource = [.. gear.Items(slot).Select(PickerEntry).OfType<PickerItem>()];
-        if (slot == Slot.Weapon && gear.WeaponType(gear.Worn(Current.Guid, Slot.Weapon)) is var kind and not -1)
+        if (slot == Slot.Weapon && gear.WeaponType(gear.Equipped(Current.Guid, Slot.Weapon)) is var kind and not -1)
             pickerSource = [.. pickerSource.Where(item => gear.WeaponType(item.Guid) == kind)];
         FillPicker();
         ulong chosen = Selected?.Items.GetValueOrDefault(slot) ?? 0;
@@ -797,7 +797,7 @@ internal sealed partial class Panel
         }
         if (plan.Moves.Count == 0)
         {
-            Toast("Nothing to change", plan.Missing.Count > 0 ? $"{plan.Missing.Count} items are no longer owned" : "This gear is already worn");
+            Toast("Nothing to change", plan.Missing.Count > 0 ? $"{plan.Missing.Count} items are no longer owned" : "This gear is already equipped");
             dirty = true;
             return;
         }
@@ -1061,9 +1061,9 @@ internal sealed partial class Panel
         }
         if (list.Count == 0)
             Print(parent, "No templates yet", 28f, 96f, 230f, 20f, 13, Style.Dim, TextAnchor.MiddleLeft);
-        Action create = Create, saveWorn = SaveWorn;
+        Action create = Create, saveEquipped = SaveEquipped;
         Button_(parent, "Create new template", "Y", 14f, 640f, 248f, 40f, true, create);
-        Button_(parent, "Save worn gear as template", "View", 14f, 688f, 248f, 40f, false, saveWorn);
+        Button_(parent, "Save equipped gear as template", "View", 14f, 688f, 248f, 40f, false, saveEquipped);
 
         if (Selected is { } current)
         {
@@ -1100,13 +1100,13 @@ internal sealed partial class Panel
     private float DrawTemplateRow(RectTransform parent, CharacterTemplate item, float y, Selection selection)
     {
         var (notes, warn) = TemplateNote(item);
-        bool worn = item.Items.Count > 0 && item.Items.All(pair => gear.Worn(item.Avatar, pair.Key) == pair.Value);
+        bool equipped = item.Items.Count > 0 && item.Items.All(pair => gear.Equipped(item.Avatar, pair.Key) == pair.Value);
         float height = 48f + (notes.Length > 0 ? 18f : 0f);
         if (selection != Selection.None)
             Box(parent, 0f, y, 276f, height, Style.Band, null);
         if (selection == Selection.Focus)
             Print(parent, "▸", 10f, y + 10f, 14f, 20f, 13, Style.Text, TextAnchor.MiddleLeft);
-        Fit(parent, item.Name + (worn ? "   (Worn)" : ""), 28f, y + 8f, 240f, 20f, 15, Style.Text);
+        Fit(parent, item.Name + (equipped ? "   (Equipped)" : ""), 28f, y + 8f, 240f, 20f, 15, Style.Text);
         Fit(parent, SetSummary(item.Items.Values), 28f, y + 28f, 240f, 16f, 12, Style.Dim);
         if (notes.Length > 0)
             Print(parent, notes, 28f, y + 44f, 240f, 16f, 12, warn ? Warn : Down, TextAnchor.MiddleLeft);
@@ -1129,7 +1129,7 @@ internal sealed partial class Panel
         }
         if (gone > 0)
             return ($"{gone} item{(gone > 1 ? "s" : "")} no longer owned", false);
-        return held > 0 ? (held == 1 ? $"1 item worn by {who}" : $"{held} items worn by others", true) : ("", true);
+        return held > 0 ? (held == 1 ? $"1 item equipped by {who}" : $"{held} items equipped by others", true) : ("", true);
     }
 
     private string SetSummary(IEnumerable<ulong> items)
@@ -1178,21 +1178,21 @@ internal sealed partial class Panel
             line += 18f;
         }
         if (gear.Holder(guid) is { } holder && holder != current.Avatar)
-            Print(parent, $"Worn by {gear.NameOf(holder)}", x + 12f, y + Height - 26f, Width - 24f, 16f, 12, Warn, TextAnchor.MiddleLeft);
+            Print(parent, $"Equipped by {gear.NameOf(holder)}", x + 12f, y + Height - 26f, Width - 24f, 16f, 12, Warn, TextAnchor.MiddleLeft);
     }
 
     // The items' own stats, without set bonuses or the character's base stats.
     private void DrawCompare(RectTransform parent, CharacterTemplate current)
     {
         const float X = 960f, Width = 296f;
-        Print(parent, "Gear stats compared with worn gear", X, 90f, Width, 20f, 14, Style.Cream, TextAnchor.MiddleLeft);
+        Print(parent, "Gear stats compared with equipped gear", X, 90f, Width, 20f, 14, Style.Cream, TextAnchor.MiddleLeft);
         var after = new Dictionary<string, (float Value, bool Percent)>();
         var before = new Dictionary<string, (float Value, bool Percent)>();
         foreach (Slot slot in SlotOrder)
         {
-            ulong worn = gear.Worn(current.Avatar, slot);
-            ulong chosen = current.Items.GetValueOrDefault(slot, worn);
-            Add(before, gear.View(worn));
+            ulong equipped = gear.Equipped(current.Avatar, slot);
+            ulong chosen = current.Items.GetValueOrDefault(slot, equipped);
+            Add(before, gear.View(equipped));
             Add(after, gear.View(chosen));
         }
         float y = 118f;
@@ -1209,7 +1209,7 @@ internal sealed partial class Panel
             if (y > 560f)
                 break;
         }
-        string sets = SetSummary(SlotOrder.Select(slot => current.Items.GetValueOrDefault(slot, gear.Worn(current.Avatar, slot))).Where(guid => guid != 0));
+        string sets = SetSummary(SlotOrder.Select(slot => current.Items.GetValueOrDefault(slot, gear.Equipped(current.Avatar, slot))).Where(guid => guid != 0));
         Fit(parent, sets, X, y + 10f, Width, 18f, 13, Up);
         Action apply = AskApply;
         Button_(parent, "Apply template", "X", X, y + 40f, Width, 40f, true, apply);
@@ -1254,7 +1254,7 @@ internal sealed partial class Panel
         {
             Print(parent, "No team templates yet", 0f, 320f, 1280f, 30f, 18, Style.Dim, TextAnchor.MiddleCenter);
             Action save = SaveParty;
-            Button_(parent, "Save party's worn gear as team", "Y", 470f, 370f, 340f, 42f, true, save);
+            Button_(parent, "Save party's equipped gear as team", "Y", 470f, 370f, 340f, 42f, true, save);
             DrawFooter(parent, "");
             return;
         }
@@ -1280,7 +1280,7 @@ internal sealed partial class Panel
         if (padLayout)
         {
             Mark(parent, "Y", 28f, 756f);
-            Print(parent, "Save party's worn gear as team", 60f, 758f, 280f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
+            Print(parent, "Save party's equipped gear as team", 60f, 758f, 280f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
             Mark(parent, "Menu", 340f, 756f);
             Print(parent, "Rename or delete", 372f, 758f, 170f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
             Mark(parent, "UpDown", 790f, 756f);
@@ -1293,7 +1293,7 @@ internal sealed partial class Panel
         else
         {
             Action save = SaveParty, menu = OpenMenu, apply = AskApply;
-            Button_(parent, "Save party's worn gear as team", "", 24f, 750f, 290f, 36f, false, save);
+            Button_(parent, "Save party's equipped gear as team", "", 24f, 750f, 290f, 36f, false, save);
             Button_(parent, "Rename or delete", "", 324f, 750f, 180f, 36f, false, menu);
             Button_(parent, "Apply team", "", 960f, 750f, 150f, 36f, true, apply);
             EscHint(parent, "Close");
@@ -1312,12 +1312,12 @@ internal sealed partial class Panel
         Print(parent, gear.NameOf(who.Avatar), x + 66f, Top + 24f, Width - 76f, 22f, 16, Style.Text, TextAnchor.MiddleLeft);
         CharacterTemplate chosen = library.Character(who.Template);
         Box(parent, x + 14f, Top + 68f, Width - 28f, 34f, Style.Band, Shapes.Card);
-        Print(parent, chosen?.Name ?? "Keep worn gear", x + 14f, Top + 74f, Width - 28f, 22f, 14, Style.Text, TextAnchor.MiddleCenter);
+        Print(parent, chosen?.Name ?? "Keep equipped gear", x + 14f, Top + 74f, Width - 28f, 22f, 14, Style.Text, TextAnchor.MiddleCenter);
         Print(parent, "‹", x + 22f, Top + 74f, 16f, 22f, 15, Style.Dim, TextAnchor.MiddleLeft);
         Print(parent, "›", x + Width - 38f, Top + 74f, 16f, 22f, 15, Style.Dim, TextAnchor.MiddleRight);
         for (int i = 0; i < SlotOrder.Length; i++)
         {
-            ulong guid = chosen?.Items.GetValueOrDefault(SlotOrder[i]) ?? gear.Worn(who.Avatar, SlotOrder[i]);
+            ulong guid = chosen?.Items.GetValueOrDefault(SlotOrder[i]) ?? gear.Equipped(who.Avatar, SlotOrder[i]);
             float cx = x + 14f + (i % 3) * 92f, cy = Top + 114f + (i / 3) * 92f;
             ItemView view = guid == 0 ? null : gear.View(guid);
             if (view != null)
@@ -1328,7 +1328,7 @@ internal sealed partial class Panel
                 Frame(parent, cx, cy, 86f, 86f, Warn);
         }
         float y = Top + 310f;
-        IEnumerable<ulong> items = SlotOrder.Select(slot => chosen?.Items.GetValueOrDefault(slot, gear.Worn(who.Avatar, slot)) ?? gear.Worn(who.Avatar, slot)).Where(guid => guid != 0);
+        IEnumerable<ulong> items = SlotOrder.Select(slot => chosen?.Items.GetValueOrDefault(slot, gear.Equipped(who.Avatar, slot)) ?? gear.Equipped(who.Avatar, slot)).Where(guid => guid != 0);
         Fit(parent, SetSummary(items), x + 14f, y, Width - 28f, 18f, 12, Up);
         y += 24f;
         var totals = new Dictionary<string, (float, bool)>();
@@ -1387,15 +1387,15 @@ internal sealed partial class Panel
             }
             if (gear.Holder(shown.Guid) is { } holder && holder != Current.Guid)
             {
-                Print(parent, $"Worn by {gear.NameOf(holder)}", Side + 14f, 440f, Width - 28f, 18f, 13, Warn, TextAnchor.MiddleLeft);
-                Print(parent, $"Applying gives {gear.NameOf(holder)} {Current.Name}'s worn {pickerSlot.ToString().ToLowerInvariant()}", Side + 14f, 462f, Width - 28f, 18f, 12, Style.Dim, TextAnchor.MiddleLeft);
+                Print(parent, $"Equipped by {gear.NameOf(holder)}", Side + 14f, 440f, Width - 28f, 18f, 13, Warn, TextAnchor.MiddleLeft);
+                Print(parent, $"Applying gives {gear.NameOf(holder)} {Current.Name}'s equipped {pickerSlot.ToString().ToLowerInvariant()}", Side + 14f, 462f, Width - 28f, 18f, 12, Style.Dim, TextAnchor.MiddleLeft);
             }
             Action pick = Pick;
             Button_(parent, "Use in this template", "A", Side, 504f, Width, 42f, true, pick);
         }
         Band(parent, 740f, 60f, Bar);
         bool weapon = pickerSlot == Slot.Weapon;
-        string freeText = Query.OnlyFree ? "Show all items" : "Items nobody wears";
+        string freeText = Query.OnlyFree ? "Show all items" : "Unequipped items";
         if (padLayout)
         {
             float x = 28f;
@@ -1441,7 +1441,7 @@ internal sealed partial class Panel
             filters.AddRange(artifactQuery.Sets.Select(ArtifactSets.Name));
         string filter = filters.Count == 0 ? "None" : filters.Count <= 2 ? string.Join(", ", filters) : $"{filters[0]} and {filters.Count - 1} more";
         string sort = pickerSlot == Slot.Weapon || SortList().Count == 0 ? "Level" : string.Join(", ", SortList().Select(key => SortAffixes.First(row => row.Key == key).Label));
-        return $"Filter: {filter}    Sort: {sort}    {pickerItems.Count} items{(Query.OnlyFree ? ", nobody wears them" : "")}";
+        return $"Filter: {filter}    Sort: {sort}    {pickerItems.Count} items{(Query.OnlyFree ? ", all unequipped" : "")}";
     }
 
     private void DrawWeaponFilter(RectTransform parent)
@@ -1770,7 +1770,7 @@ internal sealed partial class Panel
     }
 
     // The game's own item card: art on a rarity plate, stars on its lower edge, level on a light strip, the lock and
-    // refinement in the top left and the wearer in the top right.
+    // refinement in the top left and who has it equipped in the top right.
     private void ItemCard(Transform parent, ItemView view, float x, float y, float width, float height, bool focus)
     {
         Box(parent, x, y, width, height, Style.Strip, Shapes.Card);
@@ -1819,8 +1819,10 @@ internal sealed partial class Panel
         bool showGlyph = padLayout && glyph.Length > 0;
         if (showGlyph)
             Mark(parent, glyph, x + 14f, y + (height - 24f) / 2f);
-        float inset = showGlyph ? 48f : 0f;
-        Print(parent, text, x + inset, y, width - inset, height, 13, textInk, showGlyph ? TextAnchor.MiddleLeft : TextAnchor.MiddleCenter);
+        if (showGlyph)
+            Fit(parent, text, x + 48f, y + (height - 18f) / 2f, width - 58f, 18f, 13, textInk);
+        else
+            Print(parent, text, x, y, width, height, 13, textInk, TextAnchor.MiddleCenter);
         Hit(parent, x, y, width, height, click);
     }
 }
