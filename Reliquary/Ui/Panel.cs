@@ -43,7 +43,7 @@ internal sealed partial class Panel
     private Widgets ui;
     private Font font;
     private float nextFontLook;
-    private bool open, dirty, padLayout = true;
+    private bool open, dirty, padLayout = true, cursorFreed;
     private Tab tab;
     private Layer layer;
     private int avatar, template, slotIndex, team, member, menuIndex;
@@ -93,7 +93,10 @@ internal sealed partial class Panel
             tile.Update(now, Shapes.Get(Shapes.Sigil));
             applier.Update();
             if (open)
+            {
                 LoadOnePortrait();
+                UpdateCursor();
+            }
             if (!open)
             {
                 DrawPrompt();
@@ -158,8 +161,31 @@ internal sealed partial class Panel
         steps.Run("switch player input", () => ActorUtils.EnablePlayerInput(false, false));
     }
 
+    // The game locks the cursor once its menu closes, so with a mouse the panel frees it, every frame in case the game locks it again.
+    private void UpdateCursor()
+    {
+        if (padLayout)
+        {
+            LockCursor();
+            return;
+        }
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
+        cursorFreed = true;
+    }
+
+    private void LockCursor()
+    {
+        if (!cursorFreed)
+            return;
+        cursorFreed = false;
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
+    }
+
     private void Close()
     {
+        LockCursor();
         open = false;
         layer = Layer.Main;
         if (root)
