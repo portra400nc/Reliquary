@@ -60,7 +60,7 @@ internal sealed class Panel
     private float toastUntil;
     private IReadOnlyList<Move> undo = [];
     private float nextWarning;
-    private bool portraitsLogged;
+    private bool portraitsLogged, filterLogged;
 
     public Panel(Action<string> log, Action<string> warning)
     {
@@ -1246,6 +1246,7 @@ internal sealed class Panel
             TopLeft(clip.rectTransform, x, y, size, size);
             clip.gameObject.AddComponent<Mask>().showMaskGraphic = false;
             Image portrait = Picture(clip.rectTransform, "Portrait", null, Style.White);
+            Smooth(sprite);
             portrait.sprite = sprite;
             portrait.preserveAspect = true;
             Fill(portrait.rectTransform);
@@ -1257,6 +1258,18 @@ internal sealed class Panel
         }
         if (focus)
             Box(parent, x + 4f, y + size + 4f, size - 8f, 3f, Style.Cream, null);
+    }
+
+    // The portraits are drawn far below their texture's size, where the texture's own filter leaves jagged edges.
+    private void Smooth(Sprite sprite)
+    {
+        Texture2D texture = sprite.texture;
+        if (!filterLogged)
+        {
+            filterLogged = true;
+            log($"portrait texture {texture.width}x{texture.height}, filter {texture.filterMode}, mips {texture.mipmapCount}, sprite {sprite.rect.width}x{sprite.rect.height}");
+        }
+        texture.filterMode = FilterMode.Trilinear;
     }
 
     // The game's own item card: art on a rarity plate, stars on its lower edge, level on a light strip, the lock and

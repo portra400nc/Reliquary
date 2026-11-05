@@ -1,6 +1,6 @@
 namespace Reliquary;
 
-// Character ID to icon name, generated from the 7.1 AvatarExcelConfigData. A newer character tries their display name,
+// Character ID to icon name, generated from the 7.2 AvatarExcelConfigData. A newer character tries their display name,
 // which is the icon name for many of them, and shows initials if the game has no such icon.
 internal static class AvatarIcons
 {
@@ -126,13 +126,6 @@ internal static class AvatarIcons
         [10000130] = "Linnea",
         [10000131] = "Nicole",
         [10000132] = "Prune",
-        [10000133] = "MarionetteNew",
-        [10000134] = "PlayerBoy",
-        [10000135] = "PlayerGirl",
-        [10000140] = "Vodyanitsa",
-        [10000143] = "Vesna",
-        [10000148] = "Alyosha",
-        [10000150] = "Odette",
         [10000901] = "Mavuika",
         [10000902] = "Hutao",
         [10000903] = "Ineffa",
