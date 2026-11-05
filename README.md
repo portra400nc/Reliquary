@@ -33,7 +33,6 @@ Reliquary lists every change first. Wearing an item another character holds give
 ## Limits
 
 - The comparison adds up the items' own stats. It leaves out set bonuses and the character's base stats.
-- Set names are not shown yet, only the piece count.
 - The game's controller navigation does not reach the tile, so controllers use Y.
 - Artifacts cannot be taken off, because the mod has no request for that.
 

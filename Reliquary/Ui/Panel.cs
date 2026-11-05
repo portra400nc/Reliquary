@@ -852,7 +852,7 @@ internal sealed class Panel
     private string SetSummary(IEnumerable<ulong> items)
     {
         var sets = items.Select(gear.View).Where(view => view != null && view.Set != 0).GroupBy(view => view.Set).Where(group => group.Count() >= 2)
-            .OrderByDescending(group => group.Count()).Select(group => $"{group.Count()}-piece set").ToList();
+            .OrderByDescending(group => group.Count()).Select(group => $"{ArtifactSets.Name(group.Key)} {group.Count()}").ToList();
         return sets.Count > 0 ? string.Join(", ", sets) : items.Any() ? "No set bonus" : "Nothing chosen yet";
     }
 
