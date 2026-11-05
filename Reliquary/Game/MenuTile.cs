@@ -35,6 +35,24 @@ internal sealed class MenuTile(Steps steps, Action<string> log)
         return RectTransformUtility.RectangleContainsScreenPoint(tile.TryCast<RectTransform>(), new Vector2(Input.mousePosition.x, Input.mousePosition.y), camera);
     }
 
+    // The screen point at the middle of the left edge of the game's Quit Game button.
+    public Vector2? QuitEdge()
+    {
+        if (!Open)
+            return null;
+        foreach (Button button in page.GetComponentsInChildren<Button>())
+            for (Transform node = button.transform; node && node != page.transform; node = node.parent)
+                if (node.name.StartsWith("BtnLogout", StringComparison.Ordinal) && node.gameObject.activeInHierarchy && node.TryCast<RectTransform>() is { } rect)
+                {
+                    Canvas canvas = rect.GetComponentInParent<Canvas>();
+                    Camera camera = canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay ? canvas.worldCamera : null;
+                    Rect box = rect.rect;
+                    Vector3 left = rect.TransformPoint(new Vector3(box.xMin, box.center.y, 0f));
+                    return RectTransformUtility.WorldToScreenPoint(camera, left);
+                }
+        return null;
+    }
+
     // Leaves the menu the way its own Leave button does.
     public void Leave()
     {

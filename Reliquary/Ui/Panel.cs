@@ -66,7 +66,9 @@ internal sealed class Panel
     private float toastUntil;
     private IReadOnlyList<Move> undo = [];
     private float nextWarning;
-    private bool portraitsLogged;
+    private float extraX, extraY;
+    private int screenWidth, screenHeight;
+    private RectTransform promptBox;
 
     public Panel(Action<string> log, Action<string> warning)
     {
@@ -104,6 +106,12 @@ internal sealed class Panel
                 undo = [];
                 dirty = true;
             }
+            if (screenWidth != Screen.width || screenHeight != Screen.height)
+            {
+                screenWidth = Screen.width;
+                screenHeight = Screen.height;
+                dirty = true;
+            }
             if (dirty && Ensure(now))
                 Build();
         }
@@ -135,11 +143,6 @@ internal sealed class Panel
             return;
         LoadLibrary(gear.Characters[0].Guid);
         icons.ReleaseSmall();
-        if (!portraitsLogged)
-        {
-            portraitsLogged = true;
-            log($"portraits: {gear.Characters.Count(c => icons.Get(c.Icon + "_Circle") != null)} circle icons, none for {string.Join(", ", gear.Characters.Where(c => icons.Get(c.Icon + "_Circle") == null && icons.Get(c.Icon) == null).Select(c => c.Name))}");
-        }
         tile.Leave();
         DestroyPrompt();
         ulong active = gear.Active();
@@ -849,14 +852,22 @@ internal sealed class Panel
             DestroyPrompt();
             return;
         }
-        if (promptRoot || !font && !FindFont())
-            return;
-        promptRoot = NewCanvas("ReliquaryPrompt");
-        ui = new Widgets(font);
-        RectTransform box = Node("Prompt", promptRoot.transform);
-        TopLeft(box, 110f, 736f, 150f, 32f);
-        Glyph(box, "Y", Style.XboxY, 0f, 4f);
-        Print(box, "Reliquary", 30f, 4f, 110f, 24f, 15, Style.BackInk, TextAnchor.MiddleLeft);
+        if (!promptRoot)
+        {
+            if (!font && !FindFont())
+                return;
+            promptRoot = NewCanvas("ReliquaryPrompt");
+            ui = new Widgets(font);
+            promptBox = Node("Prompt", promptRoot.transform);
+            Glyph(promptBox, "Y", Style.XboxY, 0f, 4f);
+            Print(promptBox, "Reliquary", 30f, 4f, 110f, 24f, 15, Style.BackInk, TextAnchor.MiddleLeft);
+        }
+        // Left of the game's Quit Game button, wherever the screen's shape puts it.
+        float scale = Math.Min(Screen.width / Style.ReferenceWidth, Screen.height / Style.ReferenceHeight);
+        if (tile.QuitEdge() is { } edge)
+            TopLeft(promptBox, edge.x / scale - PromptWidth, (Screen.height - edge.y) / scale - 16f, PromptWidth, 32f);
+        else
+            TopLeft(promptBox, 110f, 736f, PromptWidth, 32f);
     }
 
     private bool FindFont()
@@ -872,6 +883,7 @@ internal sealed class Panel
         if (promptRoot)
             Object.Destroy(promptRoot);
         promptRoot = null;
+        promptBox = null;
     }
 
     private void Build()
@@ -881,9 +893,12 @@ internal sealed class Panel
         if (content)
             Object.Destroy(content);
         content = Node("Content", root.transform).gameObject;
-        RectTransform rect = content.GetComponent<RectTransform>();
-        Fill(rect);
-        Fill(Picture(rect, "Tint", null, Tint).rectTransform);
+        RectTransform screen = content.GetComponent<RectTransform>();
+        Fill(screen);
+        Fill(Picture(screen, "Tint", null, Tint).rectTransform);
+        MeasureScreen();
+        RectTransform rect = Node("Stage", screen);
+        Place(rect, V(0.5f, 0.5f), V(0.5f, 0.5f), V(0.5f, 0.5f), V(0f, 0f), V(Style.ReferenceWidth, Style.ReferenceHeight));
         switch (layer)
         {
             case Layer.Picker: DrawPicker(rect); break;
@@ -910,9 +925,33 @@ internal sealed class Panel
             DrawToast(rect);
     }
 
+    // The canvas keeps a 1280x800 stage whole and centered. These reach past it to the screen's edges.
+    private void MeasureScreen()
+    {
+        float scale = Math.Min(Screen.width / Style.ReferenceWidth, Screen.height / Style.ReferenceHeight);
+        extraX = (Screen.width / scale - Style.ReferenceWidth) / 2f;
+        extraY = (Screen.height / scale - Style.ReferenceHeight) / 2f;
+    }
+
+    private void Band(Transform parent, float y, float height, Color color)
+    {
+        float top = y <= 0f ? y - extraY : y;
+        float bottom = y + height >= Style.ReferenceHeight ? y + height + extraY : y + height;
+        Box(parent, -extraX, top, Style.ReferenceWidth + 2f * extraX, bottom - top, color, null);
+    }
+
+    private void LeftBand(Transform parent, float y, float width, float height, Color color)
+    {
+        float top = y <= 0f ? y - extraY : y;
+        float bottom = y + height >= Style.ReferenceHeight ? y + height + extraY : y + height;
+        Box(parent, -extraX, top, width + extraX, bottom - top, color, null);
+    }
+
+    private void Cover(Transform parent, Color color) => Band(parent, 0f, Style.ReferenceHeight, color);
+
     private void DrawTop(RectTransform parent)
     {
-        Image bar = Box(parent, 0f, 0f, 1280f, 74f, Bar, null);
+        Band(parent, 0f, 74f, Bar);
         Image sigil = Picture(parent, "Sigil", Shapes.Sigil, Style.Cream);
         TopLeft(sigil.rectTransform, 28f, 22f, 30f, 30f);
         Print(parent, "Reliquary", 68f, 22f, 200f, 30f, 21, Style.Text, TextAnchor.MiddleLeft);
@@ -955,7 +994,7 @@ internal sealed class Panel
 
     private void DrawCharacters(RectTransform parent)
     {
-        Box(parent, 0f, 74f, 276f, 666f, Bar, null);
+        LeftBand(parent, 74f, 276f, 666f, Bar);
         List<CharacterTemplate> list = Templates;
         float y = 80f;
         for (int i = 0; i < list.Count && y < 590f; i++)
@@ -986,6 +1025,7 @@ internal sealed class Panel
     }
 
     private const int PickerColumns = 7, PickerRows = 4;
+    private const float PromptWidth = 136f;
     private static readonly (string Key, string Label)[] WeaponAttributes =
     [
         ("CRIT Rate", "CRIT Rate"), ("CRIT DMG", "CRIT DMG"), ("ATK%", "ATK Percentage"), ("DEF%", "DEF Percentage"), ("HP%", "HP Percentage"),
@@ -1133,7 +1173,7 @@ internal sealed class Panel
 
     private void DrawFooter(RectTransform parent, string primary)
     {
-        Box(parent, 0f, 740f, 1280f, 60f, Bar, null);
+        Band(parent, 740f, 60f, Bar);
         if (!padLayout)
         {
             EscHint(parent, "Close");
@@ -1177,7 +1217,7 @@ internal sealed class Panel
             Print(parent, $"{gear.NameOf(clash.First)} and {gear.NameOf(clash.Second)} both need {gear.View(clash.Item)?.Name ?? "one item"}", 44f, 676f, 1190f, 20f, 14, Warn, TextAnchor.MiddleLeft);
             Print(parent, "Choose another template for one of them. The team cannot be applied until then.", 44f, 698f, 1190f, 18f, 12, Style.Dim, TextAnchor.MiddleLeft);
         }
-        Box(parent, 0f, 740f, 1280f, 60f, Bar, null);
+        Band(parent, 740f, 60f, Bar);
         Color applyInk = check.CanApply ? Style.Text : Style.Dim;
         if (padLayout)
         {
@@ -1247,7 +1287,7 @@ internal sealed class Panel
     {
         const int Columns = PickerColumns, Rows = PickerRows;
         const float CardWidth = 112f, CardHeight = 146f, Gap = 8f;
-        Box(parent, 0f, 0f, 1280f, 74f, Bar, null);
+        Band(parent, 0f, 74f, Bar);
         Print(parent, Selected?.Name ?? "", 28f, 22f, 300f, 30f, 21, Style.Text, TextAnchor.MiddleLeft);
         Print(parent, $"{pickerSlot} for {Current.Name}", 340f, 26f, 400f, 24f, 16, Style.Cream, TextAnchor.MiddleLeft);
         Fit(parent, PickerState(), 28f, 80f, 830f, 20f, 13, Style.Dim);
@@ -1294,7 +1334,7 @@ internal sealed class Panel
             Action pick = Pick;
             Button_(parent, "Use in this template", "A", Style.XboxA, Side, 504f, Width, 42f, true, pick);
         }
-        Box(parent, 0f, 740f, 1280f, 60f, Bar, null);
+        Band(parent, 740f, 60f, Bar);
         bool weapon = pickerSlot == Slot.Weapon;
         string freeText = Query.OnlyFree ? "Show all items" : "Items nobody wears";
         if (padLayout)
@@ -1373,7 +1413,7 @@ internal sealed class Panel
 
     private void DrawPanelFrame(RectTransform parent, string title, string section, string hint)
     {
-        Box(parent, 0f, 0f, 392f, 800f, Style.Hex(0x202938, 0.985f), null);
+        LeftBand(parent, 0f, 392f, 800f, Style.Hex(0x202938, 0.985f));
         Print(parent, title, 22f, 34f, 340f, 26f, 18, Style.Cream, TextAnchor.MiddleLeft);
         Box(parent, 16f, 70f, 360f, 1f, Style.Hex(0xd3bc8e, 0.3f), null);
         Print(parent, section, 22f, 84f, 340f, 22f, 14, Style.Cream, TextAnchor.MiddleLeft);
@@ -1383,7 +1423,7 @@ internal sealed class Panel
 
     private void DrawPanelFooter(RectTransform parent, Action reset)
     {
-        Box(parent, 0f, 740f, 392f, 60f, Style.Hex(0x181f2c), null);
+        LeftBand(parent, 740f, 392f, 60f, Style.Hex(0x181f2c));
         if (padLayout)
         {
             Glyph(parent, "L3", Style.Text, 40f, 756f);
@@ -1422,7 +1462,7 @@ internal sealed class Panel
     {
         const int PerColumn = 14;
         const float Left = 64f, Top = 86f, ColumnWidth = 411f, RowHeight = 45f;
-        Box(parent, 0f, 0f, 1280f, 800f, Style.Hex(0x151c2a, 0.97f), null);
+        Cover(parent, Style.Hex(0x151c2a, 0.97f));
         Print(parent, "Artifact set filter", 64f, 24f, 500f, 24f, 17, Style.Cream, TextAnchor.MiddleLeft);
         Print(parent, "Artifacts that meet the requirements will be shown", 64f, 48f, 600f, 18f, 12, Style.Dim, TextAnchor.MiddleLeft);
         Box(parent, 64f, 72f, 1152f, 1f, Style.Hex(0xd3bc8e, 0.3f), null);
@@ -1475,7 +1515,7 @@ internal sealed class Panel
                 y += height + 8f;
             }
         }
-        Box(parent, 0f, 740f, 1280f, 60f, Bar, null);
+        Band(parent, 740f, 60f, Bar);
         if (padLayout)
         {
             Glyph(parent, "L3", Style.Text, 28f, 756f);
@@ -1498,7 +1538,7 @@ internal sealed class Panel
 
     private void DrawConfirm(RectTransform parent)
     {
-        Fill(Picture(parent, "Veil", null, Style.Hex(0x060a14, 0.6f)).rectTransform);
+        Cover(parent, Style.Hex(0x060a14, 0.6f));
         int lines = Math.Min(plan.Moves.Count, 8);
         float height = 150f + lines * 38f + (plan.Missing.Count > 0 ? 22f : 0f);
         const float X = 290f, Width = 700f;
@@ -1531,7 +1571,7 @@ internal sealed class Panel
 
     private void DrawMenu(RectTransform parent)
     {
-        Fill(Picture(parent, "Veil", null, Style.Hex(0x060a14, 0.6f)).rectTransform);
+        Cover(parent, Style.Hex(0x060a14, 0.6f));
         const float X = 490f, Y = 310f;
         Box(parent, X, Y, 300f, 180f, Paper, Shapes.Card);
         Print(parent, tab == Tab.Characters ? Selected?.Name ?? "" : CurrentTeam?.Name ?? "", X + 20f, Y + 16f, 260f, 24f, 16, PaperInk, TextAnchor.MiddleCenter);
@@ -1542,7 +1582,7 @@ internal sealed class Panel
 
     private void DrawRename(RectTransform parent)
     {
-        Fill(Picture(parent, "Veil", null, Style.Hex(0x060a14, 0.6f)).rectTransform);
+        Cover(parent, Style.Hex(0x060a14, 0.6f));
         const float X = 390f, Y = 330f;
         Box(parent, X, Y, 500f, 140f, Paper, Shapes.Card);
         Print(parent, "Type a name", X + 24f, Y + 16f, 450f, 20f, 15, PaperInk, TextAnchor.MiddleLeft);
