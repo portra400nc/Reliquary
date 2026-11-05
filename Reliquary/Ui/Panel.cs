@@ -131,7 +131,7 @@ internal sealed class Panel
         if (!portraitsLogged)
         {
             portraitsLogged = true;
-            log($"no portrait icon for: {string.Join(", ", gear.Characters.Where(c => icons.Get(c.Icon) == null).Select(c => c.Name))}");
+            log($"portraits: {gear.Characters.Count(c => icons.Get(c.Icon + "_Circle") != null)} circle icons, none for {string.Join(", ", gear.Characters.Where(c => icons.Get(c.Icon + "_Circle") == null && icons.Get(c.Icon) == null).Select(c => c.Name))}");
         }
         tile.Leave();
         DestroyPrompt();
@@ -1238,20 +1238,21 @@ internal sealed class Panel
     private void Face(Transform parent, Character who, float x, float y, float size, bool focus)
     {
         Color fill = ElementColors[Math.Clamp(who.Element, 0, ElementColors.Length - 1)];
-        Image face = Picture(parent, "Face", Shapes.Knob, Style.Hex(0x2a3144));
-        TopLeft(face.rectTransform, x, y, size, size);
-        if (icons.Get(who.Icon) is { } sprite)
+        Image backing = Picture(parent, "Backing", Shapes.Knob, new Color { r = fill.r * 0.55f, g = fill.g * 0.55f, b = fill.b * 0.55f, a = 1f });
+        TopLeft(backing.rectTransform, x, y, size, size);
+        if ((icons.Get(who.Icon + "_Circle") ?? icons.Get(who.Icon)) is { } sprite)
         {
-            face.gameObject.AddComponent<Mask>().showMaskGraphic = true;
-            Image portrait = Picture(face.rectTransform, "Portrait", null, Style.White);
+            Image clip = Picture(parent, "Clip", Shapes.Knob, Style.White);
+            TopLeft(clip.rectTransform, x, y, size, size);
+            clip.gameObject.AddComponent<Mask>().showMaskGraphic = false;
+            Image portrait = Picture(clip.rectTransform, "Portrait", null, Style.White);
             portrait.sprite = sprite;
             portrait.preserveAspect = true;
             Fill(portrait.rectTransform);
         }
         else
         {
-            face.color = fill;
-            Text label = ui.Label(face.rectTransform, "Text", who.Initials, (int)(size * 0.36f), Style.White, TextAnchor.MiddleCenter);
+            Text label = ui.Label(backing.rectTransform, "Text", who.Initials, (int)(size * 0.36f), Style.White, TextAnchor.MiddleCenter);
             Fill(label.rectTransform);
         }
         if (focus)
