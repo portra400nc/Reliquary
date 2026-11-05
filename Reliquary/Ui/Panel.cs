@@ -60,7 +60,7 @@ internal sealed class Panel
     private float toastUntil;
     private IReadOnlyList<Move> undo = [];
     private float nextWarning;
-    private bool portraitsLogged, filterLogged;
+    private bool portraitsLogged;
 
     public Panel(Action<string> log, Action<string> warning)
     {
@@ -128,6 +128,7 @@ internal sealed class Panel
         if (gear.Characters.Count == 0)
             return;
         LoadLibrary(gear.Characters[0].Guid);
+        icons.ReleaseSmall();
         if (!portraitsLogged)
         {
             portraitsLogged = true;
@@ -1240,15 +1241,14 @@ internal sealed class Panel
         Color fill = ElementColors[Math.Clamp(who.Element, 0, ElementColors.Length - 1)];
         Image backing = Picture(parent, "Backing", Shapes.Knob, new Color { r = fill.r * 0.55f, g = fill.g * 0.55f, b = fill.b * 0.55f, a = 1f });
         TopLeft(backing.rectTransform, x, y, size, size);
-        if ((icons.Get(who.Icon + "_Circle") ?? icons.Get(who.Icon)) is { } sprite)
+        if ((icons.Small(who.Icon + "_Circle") ?? icons.Small(who.Icon)) is { } small)
         {
             Image clip = Picture(parent, "Clip", Shapes.Knob, Style.White);
             TopLeft(clip.rectTransform, x, y, size, size);
             clip.gameObject.AddComponent<Mask>().showMaskGraphic = false;
-            Image portrait = Picture(clip.rectTransform, "Portrait", null, Style.White);
-            Smooth(sprite);
-            portrait.sprite = sprite;
-            portrait.preserveAspect = true;
+            var portrait = Node("Portrait", clip.rectTransform).gameObject.AddComponent<RawImage>();
+            portrait.texture = small;
+            portrait.raycastTarget = false;
             Fill(portrait.rectTransform);
         }
         else
@@ -1258,18 +1258,6 @@ internal sealed class Panel
         }
         if (focus)
             Box(parent, x + 4f, y + size + 4f, size - 8f, 3f, Style.Cream, null);
-    }
-
-    // The portraits are drawn far below their texture's size, where the texture's own filter leaves jagged edges.
-    private void Smooth(Sprite sprite)
-    {
-        Texture2D texture = sprite.texture;
-        if (!filterLogged)
-        {
-            filterLogged = true;
-            log($"portrait texture {texture.width}x{texture.height}, filter {texture.filterMode}, mips {texture.mipmapCount}, sprite {sprite.rect.width}x{sprite.rect.height}");
-        }
-        texture.filterMode = FilterMode.Trilinear;
     }
 
     // The game's own item card: art on a rarity plate, stars on its lower edge, level on a light strip, the lock and
