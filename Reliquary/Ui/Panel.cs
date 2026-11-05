@@ -11,12 +11,12 @@ namespace Reliquary.Ui;
 
 // The approved full-screen UI. Its objects are rebuilt whenever its state changes, because nothing else on this canvas
 // moves and the game cannot run custom MonoBehaviours.
-internal sealed class Panel
+internal sealed partial class Panel
 {
     private enum Tab { Characters, Teams }
-    private enum Layer { Main, Picker, WeaponFilter, ArtifactSort, SetFilter, Confirm, Menu, Rename }
+    private enum Layer { Main, Picker, WeaponFilter, ArtifactSort, SetFilter, Confirm, Menu, Rename, Chooser, ChooserFilter }
 
-    private static readonly KeyCode[] UiKeys = [KeyCode.Escape, KeyCode.Return, KeyCode.UpArrow, KeyCode.DownArrow, KeyCode.LeftArrow, KeyCode.RightArrow, KeyCode.Q, KeyCode.E, KeyCode.F, KeyCode.N, KeyCode.G, KeyCode.R, KeyCode.PageUp, KeyCode.PageDown];
+    private static readonly KeyCode[] UiKeys = [KeyCode.Escape, KeyCode.Return, KeyCode.UpArrow, KeyCode.DownArrow, KeyCode.LeftArrow, KeyCode.RightArrow, KeyCode.Q, KeyCode.E, KeyCode.F, KeyCode.N, KeyCode.G, KeyCode.R, KeyCode.PageUp, KeyCode.PageDown, KeyCode.C];
     private static readonly Slot[] SlotOrder = [Slot.Weapon, Slot.Flower, Slot.Plume, Slot.Sands, Slot.Goblet, Slot.Circlet];
     private static readonly Color Tint = Style.Hex(0x0b1326, 0.62f);
     private static readonly Color Bar = Style.Hex(0x080e1c, 0.45f);
@@ -92,6 +92,8 @@ internal sealed class Panel
                 padLayout = false;
             tile.Update(now, Shapes.Get(Shapes.Sigil));
             applier.Update();
+            if (open)
+                LoadOnePortrait();
             if (!open)
             {
                 DrawPrompt();
@@ -207,6 +209,8 @@ internal sealed class Panel
             case Layer.WeaponFilter: WeaponFilterInput(now); break;
             case Layer.ArtifactSort: ArtifactSortInput(now); break;
             case Layer.SetFilter: SetFilterInput(now); break;
+            case Layer.Chooser: ChooserInput(now); break;
+            case Layer.ChooserFilter: ChooserFilterInput(now); break;
             case Layer.Confirm:
                 if (Pressed(PadButtons.A, KeyCode.Return))
                     Confirm();
@@ -260,6 +264,8 @@ internal sealed class Panel
             undoOrCreate();
         else if (Pressed(PadButtons.View, KeyCode.G))
             SaveWorn();
+        else if (Pressed(PadButtons.LeftStick, KeyCode.C))
+            OpenChooser();
         else if (Pressed(PadButtons.Menu, KeyCode.R) && Selected != null)
             OpenMenu();
     }
@@ -367,7 +373,7 @@ internal sealed class Panel
         else if (Pressed(PadButtons.LeftStick, KeyCode.Backspace))
         {
             reset();
-            FillPicker();
+            if (layer == Layer.ChooserFilter) FillRoster(); else FillPicker();
             dirty = true;
         }
         else if (Pressed(PadButtons.B, KeyCode.Escape))
@@ -640,8 +646,16 @@ internal sealed class Panel
 
     private void ClosePanel()
     {
-        FillPicker();
-        layer = Layer.Picker;
+        if (layer == Layer.ChooserFilter)
+        {
+            FillRoster();
+            layer = Layer.Chooser;
+        }
+        else
+        {
+            FillPicker();
+            layer = Layer.Picker;
+        }
         dirty = true;
     }
 
@@ -913,6 +927,18 @@ internal sealed class Panel
                 DrawArtifactSort(rect);
                 break;
             case Layer.SetFilter: DrawSetFilter(rect); break;
+            case Layer.Chooser:
+            case Layer.ChooserFilter:
+                DrawTop(rect);
+                DrawCharacters(rect);
+                hits.Clear();
+                DrawChooser(rect);
+                if (layer == Layer.ChooserFilter)
+                {
+                    hits.Clear();
+                    DrawChooserFilter(rect);
+                }
+                break;
             default:
                 DrawTop(rect);
                 if (tab == Tab.Characters) DrawCharacters(rect); else DrawTeams(rect);
@@ -964,6 +990,8 @@ internal sealed class Panel
             Mark(parent, "RT", x + 228f, 25f);
         if (tab != Tab.Characters)
             return;
+        Action chooser = OpenChooser;
+        Button_(parent, "All characters", "L3", 560f, 20f, 150f, 34f, false, chooser);
         const int Shown = 9;
         int count = gear.Characters.Count;
         float faces = 1280f - 28f - (Shown * 50f) - (padLayout ? 40f : 0f);
@@ -1020,8 +1048,12 @@ internal sealed class Panel
             DrawCompare(parent, current);
         }
         else
-            Print(parent, $"Create a template for {Current.Name}", 296f, 340f, 660f, 30f, 18, Style.Dim, TextAnchor.MiddleCenter);
-        DrawFooter(parent, inSlots ? "Change item" : "Open template");
+        {
+            float left = layer is Layer.Chooser or Layer.ChooserFilter ? 480f : 296f;
+            Print(parent, $"Create a template for {Current.Name}", left, 340f, 956f - left, 30f, 18, Style.Dim, TextAnchor.MiddleCenter);
+        }
+        if (layer is not (Layer.Chooser or Layer.ChooserFilter))
+            DrawFooter(parent, inSlots ? "Change item" : "Open template");
     }
 
     private const int PickerColumns = 7, PickerRows = 4;

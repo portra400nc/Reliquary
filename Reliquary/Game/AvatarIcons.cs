@@ -134,6 +134,20 @@ internal static class AvatarIcons
         [10000999] = "PlayerGirl",
     };
 
+    // The four-star characters in the same data. A newer character counts as five stars until this table knows them.
+    private static readonly HashSet<uint> FourStars =
+    [
+        10000001, 10000006, 10000014, 10000015, 10000020, 10000021, 10000023, 10000024,
+        10000025, 10000027, 10000031, 10000032, 10000034, 10000036, 10000039, 10000043,
+        10000044, 10000045, 10000048, 10000050, 10000053, 10000055, 10000056, 10000059,
+        10000061, 10000064, 10000065, 10000067, 10000068, 10000072, 10000074, 10000076,
+        10000077, 10000080, 10000081, 10000083, 10000085, 10000088, 10000090, 10000092,
+        10000097, 10000100, 10000105, 10000108, 10000110, 10000113, 10000115, 10000121,
+        10000124, 10000127, 10000132,
+    ];
+
+    public static int Rarity(uint id) => FourStars.Contains(id) ? 4 : 5;
+
     public static string Of(uint id, string displayName)
         => $"UI_AvatarIcon_{(Names.TryGetValue(id, out string name) ? name : displayName.Split(' ')[^1])}";
 }

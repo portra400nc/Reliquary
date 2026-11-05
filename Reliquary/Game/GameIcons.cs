@@ -10,9 +10,17 @@ internal sealed unsafe class GameIcons(Steps steps, Action<string> log)
 {
     private const string Folder = "ART/UI/Atlas/ItemIcon/";
     private const string LoadSpriteField = "NativeMethodInfoPtr_LoadExternalSprite_Public_Static_Sprite_String_UInt32_0";
+    private const string ElementIconPrefix = "UI_Buff_Element_";
     private const int SmallSize = 64;
     private readonly Dictionary<string, Sprite> sprites = [];
     private readonly Dictionary<string, RenderTexture> smalls = [];
+    private readonly Dictionary<int, Sprite> elements = [];
+
+    // The game's values for each element, and the end of its icon's name.
+    private static readonly Dictionary<int, string> ElementNames = new()
+    {
+        [1] = "Fire", [2] = "Water", [3] = "Grass", [4] = "Elect", [5] = "Frost", [7] = "Wind", [8] = "Roach",
+    };
 
     public Sprite Get(string name)
     {
@@ -26,9 +34,10 @@ internal sealed unsafe class GameIcons(Steps steps, Action<string> log)
     }
 
     // The icons have no mipmaps, so drawing one far below its size drops pixels. This halves it in steps, once.
-    public Texture Small(string name)
+    public Texture Small(string name, int target = SmallSize)
     {
-        if (smalls.TryGetValue(name, out RenderTexture small))
+        string key = $"{name}@{target}";
+        if (smalls.TryGetValue(key, out RenderTexture small))
             return small;
         Sprite sprite = Get(name);
         if (sprite == null)
@@ -36,7 +45,7 @@ internal sealed unsafe class GameIcons(Steps steps, Action<string> log)
         Texture source = sprite.texture;
         int size = source.width;
         var steps_ = new List<RenderTexture>();
-        while (size > SmallSize)
+        while (size > target)
         {
             size /= 2;
             var step = new RenderTexture(size, size, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear) { filterMode = FilterMode.Bilinear };
@@ -47,8 +56,28 @@ internal sealed unsafe class GameIcons(Steps steps, Action<string> log)
         small = steps_.Count > 0 ? steps_[^1] : null;
         foreach (RenderTexture step in steps_.Where(step => step != small))
             step.Release();
-        smalls[name] = small;
+        smalls[key] = small;
         return small;
+    }
+
+    public bool HasSmall(string name, int target) => smalls.ContainsKey($"{name}@{target}");
+
+    // The element icons have no load path the mod knows, but the game's world HUD keeps them loaded, so they are found by name.
+    public Sprite Element(int element)
+    {
+        if (elements.TryGetValue(element, out Sprite sprite))
+            return sprite;
+        steps.Run("find the element icons", () =>
+        {
+            foreach (UnityEngine.Object found in Resources.FindObjectsOfTypeAll(Il2CppType.Of<Sprite>()))
+                foreach ((int value, string suffix) in ElementNames)
+                    if (found.name == ElementIconPrefix + suffix)
+                        elements[value] = found.Cast<Sprite>();
+        });
+        foreach (int value in ElementNames.Keys)
+            elements.TryAdd(value, null);
+        elements.TryAdd(element, null);
+        return elements[element];
     }
 
     public void ReleaseSmall()
@@ -57,6 +86,7 @@ internal sealed unsafe class GameIcons(Steps steps, Action<string> log)
             if (small != null)
                 small.Release();
         smalls.Clear();
+        elements.Clear();
     }
 
     // The wrapper declares the handle by value, but the game method takes `ref uint`.

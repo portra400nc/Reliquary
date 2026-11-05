@@ -43,6 +43,8 @@ internal static class Shapes
         (Union(Box(10f, 5f, 4f, 14f, 1f), Box(5f, 10f, 14f, 4f, 1f)), Style.DpadRest),
         (Union(Box(10f, 5f, 4f, 5f, 1f), Box(10f, 14f, 4f, 5f, 1f)), Style.White));
     public static readonly Shape Sigil = Solid("Sigil", 64f, 64f, 0f, SwordOverGoblet(64f), Style.White);
+    public static readonly Shape Funnel = Solid("Funnel", 16f, 16f, 0f, Union(Convex((1f, 2f), (15f, 2f), (9.6f, 8.6f), (6.4f, 8.6f)), Convex((6.4f, 8f), (9.6f, 8f), (9.6f, 14f), (6.4f, 12.4f))), Style.White);
+    public static readonly Shape SortOrder = Solid("SortOrder", 16f, 16f, 0f, Union(Convex((4f, 1f), (7f, 5f), (1f, 5f)), Box(3f, 5f, 2f, 10f, 0f), Convex((12f, 15f), (9f, 11f), (15f, 11f)), Box(11f, 1f, 2f, 10f, 0f)), Style.White);
     public static readonly Shape LockBody = Solid("Lock", 12f, 14f, 0f, Union(Box(1f, 6f, 10f, 8f, 1.5f, 1.5f, 1.5f, 1.5f), Line(3.5f, 6f, 3.5f, 3.5f, 1.6f), Line(8.5f, 6f, 8.5f, 3.5f, 1.6f), Line(3.5f, 3f, 8.5f, 3f, 1.6f)), Style.White);
     public static readonly Shape Knob = Solid("Knob", Style.KnobSize, Style.KnobSize, 0f, Circle(10f, 10f, 10f), Style.Light);
     public static readonly Shape Arrow = Solid("Arrow", 7f, 10f, 0f, Convex((0f, 0f), (7f, 5f), (0f, 10f)), Style.White);
@@ -69,6 +71,12 @@ internal static class Shapes
 
     public static readonly Shape[] Art = [.. Enumerable.Range(0, 6).Select(rarity => ArtOf(rarity, false))];
     public static readonly Shape[] BlockedArt = [.. Enumerable.Range(0, 6).Select(rarity => ArtOf(rarity, true))];
+
+    // The character list's cards, with corners as tight as the game's own list.
+    private const float RosterRadius = 3f, RosterCorner = 8f;
+    public static readonly Shape RosterPlate = Solid("RosterPlate", 2f * RosterRadius + Stretch, 2f * RosterRadius + Stretch, RosterRadius,
+        Box(0f, 0f, 2f * RosterRadius + Stretch, 2f * RosterRadius + Stretch, RosterRadius), Style.White);
+    public static readonly Shape[] RosterArt = [.. Enumerable.Range(0, 6).Select(rarity => ArtOf(rarity, false, RosterRadius, RosterCorner, "Roster"))];
 
     // The badges carry a shadow, so they are drawn BadgeMargin larger than the badge on every side.
     public const float BadgeMargin = 3f;
@@ -207,15 +215,15 @@ internal static class Shapes
 
     // A card's art: a 160° gradient in its rarity's colours, rounded at the card's top corners and more at its bottom
     // right. A blocked weapon's is greyed and darkened.
-    private static Shape ArtOf(int rarity, bool blocked)
+    private static Shape ArtOf(int rarity, bool blocked, float radius = Style.CardRadius, float corner = Style.ArtCorner, string kind = "")
     {
         float size = Style.ArtSize, angle = Style.ArtAngle * MathF.PI / 180f;
         // CSS angles run clockwise from up; y runs down here.
         float dx = MathF.Sin(angle), dy = -MathF.Cos(angle);
         float length = MathF.Abs(size * dx) + MathF.Abs(size * dy);
-        var outline = Box(0f, 0f, size, size, Style.CardRadius, Style.CardRadius, Style.ArtCorner, 0f);
+        var outline = Box(0f, 0f, size, size, radius, radius, corner, 0f);
         Color from = Style.ArtFrom[rarity], to = Style.ArtTo[rarity];
-        return new($"Art{rarity}{(blocked ? "Blocked" : "")}", size, size, 0f, (x, y) =>
+        return new($"{kind}Art{rarity}{(blocked ? "Blocked" : "")}", size, size, 0f, (x, y) =>
         {
             float t = Math.Clamp(((x - size / 2f) * dx + (y - size / 2f) * dy) / length + 0.5f, 0f, 1f);
             Color color = Style.Lerp(from, to, t);

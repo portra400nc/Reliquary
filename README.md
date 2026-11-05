@@ -14,11 +14,25 @@ Each character has their own templates. A slot left empty stays as it is when yo
 | Action | Controller | Keyboard |
 |---|---|---|
 | Change character | LB, RB | Page Up, Page Down |
+| List all characters | L3 | C, or the All characters button |
 | Create new template | Y | N |
 | Save worn gear as template | View | G |
 | Change an item | A on a slot | Enter on a slot |
 | Apply template | X | F |
 | Rename or delete | Menu | R |
+
+## Character list
+
+The list shows your party first, then the rest by level. The screen behind it follows the focused character, so you can see their templates before you choose.
+
+| Action | Controller | Keyboard or mouse |
+|---|---|---|
+| Move | Left stick, D-pad | Arrow keys, or the mouse wheel |
+| Open the character | A | Enter, or click the card |
+| Go back to the character you started on | B | Esc |
+| Filter by element and weapon | Y | N, or the funnel |
+| Change the sort (Level, Rarity, Element) | X | F, or the sort box |
+| Flip the order | Menu | R, or the arrows |
 
 ## Item picker
 

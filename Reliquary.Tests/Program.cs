@@ -95,6 +95,36 @@ var bySecondary = new PickerQuery();
 bySecondary.Secondary.Add("CRIT DMG");
 Same("5,7", Order(Picking.Apply(weapons, bySecondary)), "weapons filter by secondary attribute");
 
+var team = new[]
+{
+    new RosterEntry(1, 20, 4, 1, 12, false),
+    new RosterEntry(2, 90, 5, 5, 1, false),
+    new RosterEntry(3, 81, 4, 5, 13, true),
+    new RosterEntry(4, 90, 4, 8, 11, false),
+    new RosterEntry(5, 60, 5, 2, 1, true),
+};
+string Roster_(RosterQuery query) => string.Join(",", Roster.Apply(team, query).Select(entry => entry.Guid));
+Same("3,5,2,4,1", Roster_(new RosterQuery()), "the party comes first in its own order, then level, then rarity");
+Same("3,5,1,2,4", Roster_(new RosterQuery { Ascending = true }), "flipping the order keeps the party first and reverses the level order");
+Same("3,5,2,4,1", Roster_(new RosterQuery { Sort = RosterSort.Rarity }), "the rarity sort puts five stars ahead");
+Same("3,5,1,2,4", Roster_(new RosterQuery { Sort = RosterSort.Element }), "the element sort starts at the lowest element");
+var cryo = new RosterQuery();
+cryo.Elements.Add(5);
+Same("3,2", Roster_(cryo), "the element filter keeps party members and others of that element");
+var cryoSword = new RosterQuery();
+cryoSword.Elements.Add(5);
+cryoSword.Weapons.Add(1);
+Same("2", Roster_(cryoSword), "element and weapon filters must both match");
+cryoSword.Weapons.Add(13);
+Same("3,2", Roster_(cryoSword), "several weapons can be selected");
+var cycle = new RosterQuery();
+cycle.NextSort();
+cycle.NextSort();
+cycle.NextSort();
+Same("Level", cycle.Sort.ToString(), "the sort cycles back to level");
+Same("False", new RosterQuery().Filtered.ToString(), "a new query filters nothing");
+Same("True", cryo.Filtered.ToString(), "a chosen element counts as a filter");
+
 Console.WriteLine($"Reliquary passed {checks} checks");
 
 sealed class Fake(Dictionary<(ulong, Slot), ulong> worn, HashSet<ulong> owned) : IGear

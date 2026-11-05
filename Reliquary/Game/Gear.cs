@@ -4,7 +4,7 @@ using MoleMole;
 
 namespace Reliquary;
 
-internal sealed record Character(ulong Guid, string Name, string Initials, int Element, string Icon);
+internal sealed record Character(ulong Guid, string Name, string Initials, int Element, string Icon, int Level, int Rarity, int Weapon);
 
 internal sealed record ItemStat(string Label, float Value, bool Percent);
 
@@ -16,6 +16,7 @@ internal sealed unsafe class Gear(Steps steps, Action<string> log) : IGear
 {
     private const string AllAvatars = "IMHPACAOFCE";
     private const string PartyAvatars = "HLGBGJGBGGP";
+    private const APKAPDELHPD PropLevel = (APKAPDELHPD)4001;
     private const int ArrayData = 0x20;
     private const int IndexBound = 5_000;
     private static readonly Slot[] Slots = [Slot.Flower, Slot.Plume, Slot.Sands, Slot.Goblet, Slot.Circlet, Slot.Weapon];
@@ -47,7 +48,9 @@ internal sealed unsafe class Gear(Steps steps, Action<string> log) : IGear
                     holders[item] = guid;
             string name = actor.MFGJHJKKBKF() ?? "Character";
             names[guid] = name;
-            characters.Add(new Character(guid, name, name.Length >= 2 ? name[..2] : name, (int)actor.IKILENBHAIF(), AvatarIcons.Of(Singleton<PIDAHDPFKBG>._instance.OOIHJMDNNDK(guid), name)));
+            uint id = Singleton<PIDAHDPFKBG>._instance.OOIHJMDNNDK(guid);
+            characters.Add(new Character(guid, name, name.Length >= 2 ? name[..2] : name, (int)actor.IKILENBHAIF(), AvatarIcons.Of(id, name),
+                (int)actor.EKPCECEKAGN(PropLevel), AvatarIcons.Rarity(id), WeaponType(actor.CCGCAHDBDEJ((KGLHOFEHMGC)Slot.Weapon))));
         }
         Characters = characters;
     }
