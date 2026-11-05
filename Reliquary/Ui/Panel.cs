@@ -859,7 +859,7 @@ internal sealed class Panel
             promptRoot = NewCanvas("ReliquaryPrompt");
             ui = new Widgets(font);
             promptBox = Node("Prompt", promptRoot.transform);
-            Glyph(promptBox, "Y", Style.XboxY, 0f, 4f);
+            Mark(promptBox, "Y", 0f, 4f);
             Print(promptBox, "Reliquary", 30f, 4f, 110f, 24f, 15, Style.BackInk, TextAnchor.MiddleLeft);
         }
         // Left of the game's Quit Game button, wherever the screen's shape puts it.
@@ -957,18 +957,18 @@ internal sealed class Panel
         Print(parent, "Reliquary", 68f, 22f, 200f, 30f, 21, Style.Text, TextAnchor.MiddleLeft);
         float x = 290f;
         if (padLayout)
-            Pill(parent, "LT", x, 27f);
+            Mark(parent, "LT", x, 25f);
         TabLabel(parent, "Characters", x + 38f, Tab.Characters);
         TabLabel(parent, "Teams", x + 150f, Tab.Teams);
         if (padLayout)
-            Pill(parent, "RT", x + 228f, 27f);
+            Mark(parent, "RT", x + 228f, 25f);
         if (tab != Tab.Characters)
             return;
         const int Shown = 9;
         int count = gear.Characters.Count;
         float faces = 1280f - 28f - (Shown * 50f) - (padLayout ? 40f : 0f);
         if (padLayout)
-            Pill(parent, "LB", faces - 40f, 27f);
+            Mark(parent, "LB", faces - 40f, 25f);
         for (int i = 0; i < Math.Min(Shown, count); i++)
         {
             int index = (avatar + i - Math.Min(Shown / 2, avatar) + count) % count;
@@ -981,7 +981,7 @@ internal sealed class Panel
             Hit(parent, at, 16f, 42f, 42f, () => { avatar = target; template = 0; inSlots = false; });
         }
         if (padLayout)
-            Pill(parent, "RB", 1280f - 58f, 27f);
+            Mark(parent, "RB", 1280f - 58f, 25f);
     }
 
     private void TabLabel(RectTransform parent, string text, float x, Tab which)
@@ -1008,8 +1008,8 @@ internal sealed class Panel
         if (list.Count == 0)
             Print(parent, "No templates yet", 28f, 96f, 230f, 20f, 13, Style.Dim, TextAnchor.MiddleLeft);
         Action create = Create, saveWorn = SaveWorn;
-        Button_(parent, "Create new template", "Y", Style.XboxY, 14f, 640f, 248f, 40f, true, create);
-        Button_(parent, "Save worn gear as template", "View", Style.Text, 14f, 688f, 248f, 40f, false, saveWorn);
+        Button_(parent, "Create new template", "Y", 14f, 640f, 248f, 40f, true, create);
+        Button_(parent, "Save worn gear as template", "View", 14f, 688f, 248f, 40f, false, saveWorn);
 
         if (Selected is { } current)
         {
@@ -1154,7 +1154,7 @@ internal sealed class Panel
         string sets = SetSummary(SlotOrder.Select(slot => current.Items.GetValueOrDefault(slot, gear.Worn(current.Avatar, slot))).Where(guid => guid != 0));
         Fit(parent, sets, X, y + 10f, Width, 18f, 13, Up);
         Action apply = AskApply;
-        Button_(parent, "Apply template", "X", Style.XboxX, X, y + 40f, Width, 40f, true, apply);
+        Button_(parent, "Apply template", "X", X, y + 40f, Width, 40f, true, apply);
     }
 
     private static void Add(Dictionary<string, (float, bool)> totals, ItemView view)
@@ -1178,14 +1178,14 @@ internal sealed class Panel
         {
             EscHint(parent, "Close");
             Action menu = OpenMenu;
-            Button_(parent, "Rename or delete", "", Style.Text, 24f, 750f, 180f, 36f, false, menu);
+            Button_(parent, "Rename or delete", "", 24f, 750f, 180f, 36f, false, menu);
             return;
         }
-        Glyph(parent, "☰", Style.Text, 28f, 756f);
+        Mark(parent, "Menu", 28f, 756f);
         Print(parent, "Rename or delete", 60f, 758f, 180f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
-        Glyph(parent, "A", Style.XboxA, 1010f, 756f);
+        Mark(parent, "A", 1010f, 756f);
         Print(parent, primary, 1040f, 758f, 120f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
-        Glyph(parent, "B", Style.XboxB, 1170f, 756f);
+        Mark(parent, "B", 1170f, 756f);
         Print(parent, "Close", 1200f, 758f, 60f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
     }
 
@@ -1196,16 +1196,16 @@ internal sealed class Panel
         {
             Print(parent, "No team templates yet", 0f, 320f, 1280f, 30f, 18, Style.Dim, TextAnchor.MiddleCenter);
             Action save = SaveParty;
-            Button_(parent, "Save party's worn gear as team", "Y", Style.XboxY, 470f, 370f, 340f, 42f, true, save);
+            Button_(parent, "Save party's worn gear as team", "Y", 470f, 370f, 340f, 42f, true, save);
             DrawFooter(parent, "");
             return;
         }
         if (padLayout)
-            Pill(parent, "LB", 28f, 96f);
+            Mark(parent, "LB", 28f, 94f);
         float at = padLayout ? 68f : 28f;
         Print(parent, current.Name, at, 90f, 300f, 30f, 21, Style.Text, TextAnchor.MiddleLeft);
         if (padLayout)
-            Pill(parent, "RB", at + current.Name.Length * 12f + 10f, 96f);
+            Mark(parent, "RB", at + current.Name.Length * 12f + 10f, 94f);
         Print(parent, $"Team template {team + 1} of {library.Teams.Count}", at + current.Name.Length * 12f + 50f, 94f, 300f, 22f, 13, Style.Dim, TextAnchor.MiddleLeft);
         Plan check = Planner.Plan(library.Templates(current), gear);
         for (int i = 0; i < current.Members.Count; i++)
@@ -1221,22 +1221,23 @@ internal sealed class Panel
         Color applyInk = check.CanApply ? Style.Text : Style.Dim;
         if (padLayout)
         {
-            Glyph(parent, "Y", Style.XboxY, 28f, 756f);
+            Mark(parent, "Y", 28f, 756f);
             Print(parent, "Save party's worn gear as team", 60f, 758f, 280f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
-            Glyph(parent, "☰", Style.Text, 340f, 756f);
+            Mark(parent, "Menu", 340f, 756f);
             Print(parent, "Rename or delete", 372f, 758f, 170f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
-            Print(parent, "D-pad  Change template", 760f, 758f, 220f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
-            Glyph(parent, "X", Style.XboxX, 990f, 756f);
+            Mark(parent, "UpDown", 790f, 756f);
+            Print(parent, "Change template", 820f, 758f, 150f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
+            Mark(parent, "X", 990f, 756f);
             Print(parent, "Apply team", 1020f, 758f, 120f, 24f, 14, applyInk, TextAnchor.MiddleLeft);
-            Glyph(parent, "B", Style.XboxB, 1170f, 756f);
+            Mark(parent, "B", 1170f, 756f);
             Print(parent, "Close", 1200f, 758f, 60f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
         }
         else
         {
             Action save = SaveParty, menu = OpenMenu, apply = AskApply;
-            Button_(parent, "Save party's worn gear as team", "", Style.Text, 24f, 750f, 290f, 36f, false, save);
-            Button_(parent, "Rename or delete", "", Style.Text, 324f, 750f, 180f, 36f, false, menu);
-            Button_(parent, "Apply team", "", Style.Text, 960f, 750f, 150f, 36f, true, apply);
+            Button_(parent, "Save party's worn gear as team", "", 24f, 750f, 290f, 36f, false, save);
+            Button_(parent, "Rename or delete", "", 324f, 750f, 180f, 36f, false, menu);
+            Button_(parent, "Apply team", "", 960f, 750f, 150f, 36f, true, apply);
             EscHint(parent, "Close");
         }
     }
@@ -1332,7 +1333,7 @@ internal sealed class Panel
                 Print(parent, $"Applying gives {gear.NameOf(holder)} {Current.Name}'s worn {pickerSlot.ToString().ToLowerInvariant()}", Side + 14f, 462f, Width - 28f, 18f, 12, Style.Dim, TextAnchor.MiddleLeft);
             }
             Action pick = Pick;
-            Button_(parent, "Use in this template", "A", Style.XboxA, Side, 504f, Width, 42f, true, pick);
+            Button_(parent, "Use in this template", "A", Side, 504f, Width, 42f, true, pick);
         }
         Band(parent, 740f, 60f, Bar);
         bool weapon = pickerSlot == Slot.Weapon;
@@ -1340,35 +1341,35 @@ internal sealed class Panel
         if (padLayout)
         {
             float x = 28f;
-            Glyph(parent, "Y", Style.XboxY, x, 756f);
+            Mark(parent, "Y", x, 756f);
             Print(parent, "Filter", x + 32f, 758f, 60f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
             x += 96f;
             if (!weapon)
             {
-                Pill(parent, "View", x, 758f);
+                Mark(parent, "View", x, 756f);
                 Print(parent, "Sort", x + 40f, 758f, 50f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
                 x += 92f;
             }
-            Glyph(parent, "X", Style.XboxX, x, 756f);
+            Mark(parent, "X", x, 756f);
             Print(parent, freeText, x + 32f, 758f, 180f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
-            Glyph(parent, "A", Style.XboxA, 1010f, 756f);
+            Mark(parent, "A", 1010f, 756f);
             Print(parent, "Use in template", 1040f, 758f, 130f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
-            Glyph(parent, "B", Style.XboxB, 1170f, 756f);
+            Mark(parent, "B", 1170f, 756f);
             Print(parent, "Back", 1200f, 758f, 60f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
         }
         else
         {
             Action filter = OpenFilter, sort = OpenSort, free = ToggleFree, pick = Pick;
             float x = 24f;
-            Button_(parent, "Filter", "", Style.Text, x, 750f, 90f, 36f, false, filter);
+            Button_(parent, "Filter", "", x, 750f, 90f, 36f, false, filter);
             x += 100f;
             if (!weapon)
             {
-                Button_(parent, "Sort", "", Style.Text, x, 750f, 80f, 36f, false, sort);
+                Button_(parent, "Sort", "", x, 750f, 80f, 36f, false, sort);
                 x += 90f;
             }
-            Button_(parent, freeText, "", Style.Text, x, 750f, 180f, 36f, false, free);
-            Button_(parent, "Use in template", "", Style.Text, 990f, 750f, 160f, 36f, true, pick);
+            Button_(parent, freeText, "", x, 750f, 180f, 36f, false, free);
+            Button_(parent, "Use in template", "", 990f, 750f, 160f, 36f, true, pick);
             EscHint(parent, "Back");
         }
     }
@@ -1426,17 +1427,17 @@ internal sealed class Panel
         LeftBand(parent, 740f, 392f, 60f, Style.Hex(0x181f2c));
         if (padLayout)
         {
-            Glyph(parent, "L3", Style.Text, 40f, 756f);
+            Mark(parent, "L3", 40f, 756f);
             Print(parent, "Reset", 70f, 758f, 60f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
-            Glyph(parent, "X", Style.XboxX, 150f, 756f);
+            Mark(parent, "X", 150f, 756f);
             Print(parent, "Confirm", 180f, 758f, 70f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
-            Glyph(parent, "A", Style.XboxA, 270f, 756f);
+            Mark(parent, "A", 270f, 756f);
             Print(parent, "Select", 300f, 758f, 60f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
             return;
         }
         Action confirm = ClosePanel;
-        Button_(parent, "Reset", "", Style.Text, 80f, 750f, 100f, 36f, false, reset);
-        Button_(parent, "Confirm", "", Style.Text, 192f, 750f, 110f, 36f, true, confirm);
+        Button_(parent, "Reset", "", 80f, 750f, 100f, 36f, false, reset);
+        Button_(parent, "Confirm", "", 192f, 750f, 110f, 36f, true, confirm);
     }
 
     // mark is null when the row is not selected, and the text to show in its circle when it is.
@@ -1518,20 +1519,20 @@ internal sealed class Panel
         Band(parent, 740f, 60f, Bar);
         if (padLayout)
         {
-            Glyph(parent, "L3", Style.Text, 28f, 756f);
+            Mark(parent, "L3", 28f, 756f);
             Print(parent, "Reset", 58f, 758f, 80f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
-            Glyph(parent, "X", Style.XboxX, 890f, 756f);
+            Mark(parent, "X", 890f, 756f);
             Print(parent, "Confirm filter", 920f, 758f, 120f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
-            Glyph(parent, "A", Style.XboxA, 1060f, 756f);
+            Mark(parent, "A", 1060f, 756f);
             Print(parent, "Select", 1090f, 758f, 70f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
-            Glyph(parent, "B", Style.XboxB, 1170f, 756f);
+            Mark(parent, "B", 1170f, 756f);
             Print(parent, "Leave", 1200f, 758f, 60f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
         }
         else
         {
             Action confirm = ClosePanel;
-            Button_(parent, "Reset", "", Style.Text, 24f, 750f, 100f, 36f, false, () => { artifactQuery.Sets.Clear(); FillPicker(); });
-            Button_(parent, "Confirm filter", "", Style.Text, 960f, 750f, 150f, 36f, true, confirm);
+            Button_(parent, "Reset", "", 24f, 750f, 100f, 36f, false, () => { artifactQuery.Sets.Clear(); FillPicker(); });
+            Button_(parent, "Confirm filter", "", 960f, 750f, 150f, 36f, true, confirm);
             EscHint(parent, "Leave");
         }
     }
@@ -1565,8 +1566,8 @@ internal sealed class Panel
         if (plan.Missing.Count > 0)
             Print(parent, $"{plan.Missing.Count} item{(plan.Missing.Count == 1 ? " is" : "s are")} no longer owned and will be skipped.", X + 28f, y + height - 76f, Width - 56f, 18f, 12, Style.Hex(0xb04b3f), TextAnchor.MiddleLeft);
         Action back = Back, confirm = Confirm;
-        Button_(parent, "Cancel", "B", Style.XboxB, X + 150f, y + height - 54f, 190f, 40f, false, back, PaperInk);
-        Button_(parent, tab == Tab.Teams ? "Apply team" : "Apply template", "A", Style.XboxA, X + 360f, y + height - 54f, 190f, 40f, true, confirm);
+        Button_(parent, "Cancel", "B", X + 150f, y + height - 54f, 190f, 40f, false, back, PaperInk);
+        Button_(parent, tab == Tab.Teams ? "Apply team" : "Apply template", "A", X + 360f, y + height - 54f, 190f, 40f, true, confirm);
     }
 
     private void DrawMenu(RectTransform parent)
@@ -1576,8 +1577,8 @@ internal sealed class Panel
         Box(parent, X, Y, 300f, 180f, Paper, Shapes.Card);
         Print(parent, tab == Tab.Characters ? Selected?.Name ?? "" : CurrentTeam?.Name ?? "", X + 20f, Y + 16f, 260f, 24f, 16, PaperInk, TextAnchor.MiddleCenter);
         Action rename_ = StartRename, delete = DeleteSelected;
-        Button_(parent, "Rename", "", Style.Text, X + 40f, Y + 52f, 220f, 40f, menuIndex == 0, rename_, PaperInk);
-        Button_(parent, "Delete", "", Style.Text, X + 40f, Y + 102f, 220f, 40f, menuIndex == 1, delete, PaperInk);
+        Button_(parent, "Rename", "", X + 40f, Y + 52f, 220f, 40f, menuIndex == 0, rename_, PaperInk);
+        Button_(parent, "Delete", "", X + 40f, Y + 102f, 220f, 40f, menuIndex == 1, delete, PaperInk);
     }
 
     private void DrawRename(RectTransform parent)
@@ -1650,27 +1651,39 @@ internal sealed class Panel
     // The Esc keycap and what it does, at the right end of the footer.
     private void EscHint(Transform parent, string action)
     {
-        Image cap = Picture(parent, "Key", Shapes.Bumper, Style.Light);
-        TopLeft(cap.rectTransform, 1170f, 757f, 36f, 24f);
-        Text letter = ui.Label(cap.rectTransform, "Text", "Esc", 12, Style.BackInk, TextAnchor.MiddleCenter);
+        Image cap = Picture(parent, "Key", Shapes.Key, Style.White);
+        TopLeft(cap.rectTransform, 1170f, 758f, 36f, Style.KeyHeight);
+        Text letter = ui.Label(cap.rectTransform, "Text", "Esc", Style.KeySize, Style.BumperInk, TextAnchor.MiddleCenter);
         Fill(letter.rectTransform);
         Print(parent, action, 1212f, 758f, 60f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
     }
 
-    private void Glyph(Transform parent, string letter, Color ink, float x, float y)
-    {
-        Image face = Picture(parent, "Face", Shapes.Face, Style.GlyphFill);
-        TopLeft(face.rectTransform, x, y, 24f, 24f);
-        Text label = ui.Label(face.rectTransform, "Letter", letter, Style.FaceSize, ink, TextAnchor.MiddleCenter);
-        Fill(label.rectTransform);
-    }
+    private sealed record MarkLook(Shape Shape, string Text = null, Color Ink = default, int Size = 0);
 
-    private void Pill(Transform parent, string text, float x, float y)
+    private static readonly Dictionary<string, MarkLook> Marks = new()
     {
-        Image plate = Picture(parent, "Pill", Shapes.Bumper, Style.White);
-        TopLeft(plate.rectTransform, x, y, 32f, 20f);
-        Text label = ui.Label(plate.rectTransform, "Text", text, Style.BumperSize, Style.BumperInk, TextAnchor.MiddleCenter);
-        Fill(label.rectTransform);
+        ["A"] = new(Shapes.Face, "A", Style.XboxA, Style.FaceSize),
+        ["B"] = new(Shapes.Face, "B", Style.XboxB, Style.FaceSize),
+        ["X"] = new(Shapes.Face, "X", Style.XboxX, Style.FaceSize),
+        ["Y"] = new(Shapes.Face, "Y", Style.XboxY, Style.FaceSize),
+        ["L3"] = new(Shapes.Face, "L3", Style.White, Style.BumperSize),
+        ["LB"] = new(Shapes.Bumper, "LB", Style.BumperInk, Style.BumperSize),
+        ["RB"] = new(Shapes.Bumper, "RB", Style.BumperInk, Style.BumperSize),
+        ["LT"] = new(Shapes.Trigger, "LT", Style.BumperInk, Style.BumperSize),
+        ["RT"] = new(Shapes.Trigger, "RT", Style.BumperInk, Style.BumperSize),
+        ["Menu"] = new(Shapes.Menu),
+        ["View"] = new(Shapes.View),
+        ["UpDown"] = new(Shapes.DpadUpDown),
+    };
+
+    // A controller glyph in CameraTools' look, centered in a 24 unit tall row whose top is y.
+    private void Mark(Transform parent, string name, float x, float y)
+    {
+        MarkLook look = Marks[name];
+        Image image = Picture(parent, name, look.Shape, Style.White);
+        TopLeft(image.rectTransform, x, y + (24f - look.Shape.Height) / 2f, look.Shape.Width, look.Shape.Height);
+        if (look.Text != null)
+            Fill(ui.Label(image.rectTransform, "Text", look.Text, look.Size, look.Ink, TextAnchor.MiddleCenter).rectTransform);
     }
 
     // The character's portrait clipped to a circle, or their initials when the icon table does not know them.
@@ -1710,13 +1723,13 @@ internal sealed class Panel
         float badge = y + 4f;
         if (view.Slot == Slot.Weapon)
         {
-            Box(parent, x + 4f, badge, 18f, 18f, view.Refinement >= 5 ? Style.Hex(0xd98a2f) : Style.Hex(0x3c3f4a, 0.92f), Shapes.Bumper);
+            Box(parent, x + 4f, badge, 18f, 18f, view.Refinement >= 5 ? Style.Hex(0xd98a2f) : Style.Hex(0x3c3f4a, 0.92f), Shapes.Badge);
             Print(parent, view.Refinement.ToString(), x + 4f, badge, 18f, 18f, 12, Style.White, TextAnchor.MiddleCenter);
             badge += 21f;
         }
         if (view.Locked)
         {
-            Box(parent, x + 4f, badge, 18f, 18f, Style.Hex(0xe9e5dc), Shapes.Bumper);
+            Box(parent, x + 4f, badge, 18f, 18f, Style.Hex(0xe9e5dc), Shapes.Badge);
             Image padlock = Picture(parent, "Lock", Shapes.LockBody, Style.Hex(0xc6463c));
             TopLeft(padlock.rectTransform, x + 7f, badge + 2f, 12f, 14f);
         }
@@ -1741,16 +1754,14 @@ internal sealed class Panel
         }
     }
 
-    private void Button_(Transform parent, string text, string glyph, Color ink, float x, float y, float width, float height, bool primary, Action click, Color? outline = null)
+    private void Button_(Transform parent, string text, string glyph, float x, float y, float width, float height, bool primary, Action click, Color? outline = null)
     {
         Box(parent, x, y, width, height, primary ? Style.Light : outline == null ? Style.Band : Style.Hex(0x3f3b30, 0.12f), Shapes.Pill);
         Color textInk = primary ? Style.BackInk : outline ?? Style.Text;
         bool showGlyph = padLayout && glyph.Length > 0;
-        if (showGlyph && glyph.Length == 1)
-            Glyph(parent, glyph, ink, x + 16f, y + (height - 24f) / 2f);
-        else if (showGlyph)
-            Pill(parent, glyph, x + 10f, y + (height - 20f) / 2f);
-        float inset = showGlyph ? (glyph.Length == 1 ? 48f : 52f) : 0f;
+        if (showGlyph)
+            Mark(parent, glyph, x + 14f, y + (height - 24f) / 2f);
+        float inset = showGlyph ? 48f : 0f;
         Print(parent, text, x + inset, y, width - inset, height, 13, textInk, showGlyph ? TextAnchor.MiddleLeft : TextAnchor.MiddleCenter);
         Hit(parent, x, y, width, height, click);
     }

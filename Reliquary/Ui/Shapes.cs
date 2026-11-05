@@ -22,7 +22,7 @@ internal static class Shapes
     public static readonly Shape Dpad = Glyph("Dpad", 24f, 24f, Circle(12f, 12f, 12f),
         (Union(Box(10f, 5f, 4f, 14f, 1f), Box(5f, 10f, 14f, 4f, 1f)), Style.DpadRest),
         (Union(Box(10f, 5f, 4f, 5f, 1f), Box(10f, 14f, 4f, 5f, 1f)), Style.White));
-    public static readonly Shape Key = Framed("Key", 10f + Stretch, 10f + Stretch, 5f, 5f, 1.5f, Style.KeyFill, Style.Cream);
+    public static readonly Shape Key = Solid("Key", 10f + Stretch, 10f + Stretch, 5f, Box(0f, 0f, 10f + Stretch, 10f + Stretch, 5f), Style.Light);
     public static readonly Shape Toast = Framed("Toast", Style.ToastHeight + Stretch, Style.ToastHeight + Stretch,
         Style.ToastHeight / 2f, Style.ToastHeight / 2f, 1f, Style.ToastFill, Style.ToastRing);
     public static readonly Shape Bar = Solid("Bar", 4f + Stretch, 4f + Stretch, 2f, Box(0f, 0f, 4f + Stretch, 4f + Stretch, 2f), Style.White);
@@ -30,6 +30,18 @@ internal static class Shapes
         Style.Track, Style.SwitchRingOff);
     public static readonly Shape SwitchOn = Framed("SwitchOn", Style.SwitchWidth, Style.SwitchHeight, Style.SwitchHeight / 2f, 0f, 1.5f,
         Style.Cream, Style.SwitchRingOn);
+    // CameraTools' controller glyphs.
+    public static readonly Shape Bumper = Solid("Bumper", 30f, 18f, 0f, Box(0f, 0f, 30f, 18f, 6f, 6f, 4f, 4f), Style.Light);
+    public static readonly Shape Trigger = Solid("Trigger", 26f, 22f, 0f, Box(0f, 0f, 26f, 22f, 9f, 9f, 4f, 4f), Style.Light);
+    public static readonly Shape Menu = Glyph("Menu", 26f, 20f, Box(0f, 0f, 26f, 20f, 6f),
+        (Union(Box(7.5f, 6f, 11f, 2f, 0f), Box(7.5f, 9f, 11f, 2f, 0f), Box(7.5f, 12f, 11f, 2f, 0f)), Style.White));
+    // Two overlapping squares, the back one showing only outside the front one.
+    public static readonly Shape View = Glyph("View", 26f, 20f, Box(0f, 0f, 26f, 20f, 6f),
+        (Subtract(Ring(Box(11f, 4.5f, 7f, 7f, 1f), 1.5f), Box(7.5f, 8f, 7f, 7f, 1f)), Style.White),
+        (Ring(Box(7.5f, 8f, 7f, 7f, 1f), 1.5f), Style.White));
+    public static readonly Shape DpadUpDown = Glyph("DpadUpDown", 24f, 24f, Circle(12f, 12f, 12f),
+        (Union(Box(10f, 5f, 4f, 14f, 1f), Box(5f, 10f, 14f, 4f, 1f)), Style.DpadRest),
+        (Union(Box(10f, 5f, 4f, 5f, 1f), Box(10f, 14f, 4f, 5f, 1f)), Style.White));
     public static readonly Shape Sigil = Solid("Sigil", 36f, 36f, 0f, Convex((18f, 0f), (36f, 18f), (18f, 36f), (0f, 18f)), Style.White);
     public static readonly Shape LockBody = Solid("Lock", 12f, 14f, 0f, Union(Box(1f, 6f, 10f, 8f, 1.5f, 1.5f, 1.5f, 1.5f), Line(3.5f, 6f, 3.5f, 3.5f, 1.6f), Line(8.5f, 6f, 8.5f, 3.5f, 1.6f), Line(3.5f, 3f, 8.5f, 3f, 1.6f)), Style.White);
     public static readonly Shape Knob = Solid("Knob", Style.KnobSize, Style.KnobSize, 0f, Circle(10f, 10f, 10f), Style.Light);
@@ -43,7 +55,7 @@ internal static class Shapes
 
     public static readonly Shape Pill = Solid("Pill", Style.ChipHeight + Stretch, Style.ChipHeight + Stretch, Style.ChipHeight / 2f,
         Box(0f, 0f, Style.ChipHeight + Stretch, Style.ChipHeight + Stretch, Style.ChipHeight / 2f), Style.White);
-    public static readonly Shape Bumper = Solid("Bumper", 12f + Stretch, 12f + Stretch, 6f, Box(0f, 0f, 12f + Stretch, 12f + Stretch, 6f, 6f, 4f, 4f), Style.Light);
+    public static readonly Shape Badge = Solid("Badge", 12f + Stretch, 12f + Stretch, 6f, Box(0f, 0f, 12f + Stretch, 12f + Stretch, 6f, 6f, 4f, 4f), Style.Light);
 
     public static readonly Shape Card = Solid("Card", 2f * Style.CardRadius + Stretch, 2f * Style.CardRadius + Stretch, Style.CardRadius,
         Box(0f, 0f, 2f * Style.CardRadius + Stretch, 2f * Style.CardRadius + Stretch, Style.CardRadius), Style.Strip);
@@ -128,6 +140,9 @@ internal static class Shapes
 
     // A signed distance in units at a point measured from the top left: negative inside, positive outside.
     private delegate float Field(float x, float y);
+
+    private static Field Subtract(Field shape, Field cut) => (x, y) => MathF.Max(shape(x, y), -cut(x, y));
+
 
     private static Shape Solid(string name, float width, float height, float border, Field field, Color color)
         => new(name, width, height, border, Layers((field, color)));
