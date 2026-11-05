@@ -42,7 +42,7 @@ internal static class Shapes
     public static readonly Shape DpadUpDown = Glyph("DpadUpDown", 24f, 24f, Circle(12f, 12f, 12f),
         (Union(Box(10f, 5f, 4f, 14f, 1f), Box(5f, 10f, 14f, 4f, 1f)), Style.DpadRest),
         (Union(Box(10f, 5f, 4f, 5f, 1f), Box(10f, 14f, 4f, 5f, 1f)), Style.White));
-    public static readonly Shape Sigil = Solid("Sigil", 36f, 36f, 0f, Convex((18f, 0f), (36f, 18f), (18f, 36f), (0f, 18f)), Style.White);
+    public static readonly Shape Sigil = Solid("Sigil", 64f, 64f, 0f, SwordOverGoblet(64f), Style.White);
     public static readonly Shape LockBody = Solid("Lock", 12f, 14f, 0f, Union(Box(1f, 6f, 10f, 8f, 1.5f, 1.5f, 1.5f, 1.5f), Line(3.5f, 6f, 3.5f, 3.5f, 1.6f), Line(8.5f, 6f, 8.5f, 3.5f, 1.6f), Line(3.5f, 3f, 8.5f, 3f, 1.6f)), Style.White);
     public static readonly Shape Knob = Solid("Knob", Style.KnobSize, Style.KnobSize, 0f, Circle(10f, 10f, 10f), Style.Light);
     public static readonly Shape Arrow = Solid("Arrow", 7f, 10f, 0f, Convex((0f, 0f), (7f, 5f), (0f, 10f)), Style.White);
@@ -143,6 +143,24 @@ internal static class Shapes
 
     private static Field Subtract(Field shape, Field cut) => (x, y) => MathF.Max(shape(x, y), -cut(x, y));
 
+
+    // The mod's icon, drawn in a 200-unit box: a sword in front of a goblet with an inset outline, with a gap cut around the sword.
+    private static Field SwordOverGoblet(float size)
+    {
+        const float Tilt = 34f * MathF.PI / 180f, GobletScale = 0.82f;
+        float cos = MathF.Cos(Tilt), sin = MathF.Sin(Tilt);
+        Field upright = Union(Circle(0f, 0f, 11f), Line(0f, 0f, 0f, 36f, 6.5f),
+            Convex((-46f, 37f), (-12f, 29f), (12f, 29f), (46f, 37f), (12f, 49f), (-12f, 49f)),
+            Convex((-10.5f, 44f), (10.5f, 44f), (9.5f, 188f), (0f, 214f), (-9.5f, 188f)));
+        Field sword = (x, y) => upright(cos * (x - 156f) + sin * (y - 15f), cos * (y - 15f) - sin * (x - 156f));
+        Field bowl = Intersect(Circle(100f, 36f, 74f), Convex((0f, 14f), (200f, 14f), (200f, 200f), (0f, 200f)));
+        Field goblet = Union(Ring(bowl, 10f), (x, y) => bowl(x, y) + 18f,
+            Convex((90f, 100f), (110f, 100f), (106f, 165f), (94f, 165f)),
+            Convex((94f, 158f), (106f, 158f), (140f, 176f), (146f, 186f), (54f, 186f), (60f, 176f)));
+        Field placed = (x, y) => GobletScale * goblet(100f + (x - 110f) / GobletScale, 104f + (y - 108f) / GobletScale);
+        Field icon = Union(Subtract(placed, (x, y) => sword(x, y) - 7f), sword);
+        return (x, y) => icon(x * 200f / size, y * 200f / size) * size / 200f;
+    }
 
     private static Shape Solid(string name, float width, float height, float border, Field field, Color color)
         => new(name, width, height, border, Layers((field, color)));
@@ -248,12 +266,17 @@ internal static class Shapes
             return MathF.Sqrt(ex * ex + ey * ey) - halfWidth;
         };
 
-    // Inside every edge of a convex polygon; exact along the edges, which is where the anti-aliasing reads it.
+    // A convex polygon. Inside, the distance is to the nearest edge's line; outside, to the nearest side.
     private static Field Convex(params (float X, float Y)[] points)
     {
         float cx = points.Average(point => point.X), cy = points.Average(point => point.Y);
         Field[] edges = [.. points.Select((point, i) => Edge(point.X, point.Y, points[(i + 1) % points.Length].X, points[(i + 1) % points.Length].Y, cx, cy))];
-        return (x, y) => edges.Max(edge => edge(x, y));
+        Field[] sides = [.. points.Select((point, i) => Line(point.X, point.Y, points[(i + 1) % points.Length].X, points[(i + 1) % points.Length].Y, 0f))];
+        return (x, y) =>
+        {
+            float inside = edges.Max(edge => edge(x, y));
+            return inside <= 0f ? inside : sides.Min(side => side(x, y));
+        };
     }
 
     // The distance from the line through a and b, negative on the side of c.
