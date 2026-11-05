@@ -148,7 +148,7 @@ internal sealed unsafe class Gear(Steps steps, Action<string> log) : IGear
             else if (Stats.Label(prop) is { } label)
                 subs.Add(new ItemStat(label, value, Stats.IsPercent(prop)));
         }
-        return new ItemView(guid, Slot.Weapon, weapon.NJIHDGGMLJH(), row.HDBLPDLEKOA() ?? "", row.IOCFNIBFHHN() ?? "", (int)row.JODIFHIOBNF(), (int)weapon.HDHGOLGLCEB(), (int)weapon.KMGFOCHEFDJ(), 0, main, subs);
+        return new ItemView(guid, Slot.Weapon, weapon.NJIHDGGMLJH(), row.HDBLPDLEKOA() ?? "", row.IOCFNIBFHHN() ?? "", (int)row.JODIFHIOBNF(), (int)weapon.HDHGOLGLCEB(), (int)weapon.ALEMBDDBKCA() + 1, 0, main, subs);
     }
 
     private static HDAGEENEGPJ Bag() => Singleton<HDAGEENEGPJ>._instance ?? throw new InvalidOperationException("no bag");

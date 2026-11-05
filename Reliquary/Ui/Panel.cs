@@ -619,7 +619,10 @@ internal sealed class Panel
         {
             var swapped = done.Where(move => move.Holder is not null).ToList();
             string detail = swapped.Count > 0 ? $"{gear.NameOf(swapped[0].Holder!.Value)} received the old item" : "";
-            Toast($"Applied {done.Count} items", detail + (undo.Count > 0 ? (detail.Length > 0 ? ". " : "") + "Y to undo" : ""), 6f);
+            bool undoing = toast == "Undoing";
+            if (undoing)
+                undo = [];
+            Toast(undoing ? "Undone" : $"Applied {done.Count} item{(done.Count == 1 ? "" : "s")}", undoing ? "" : detail + (undo.Count > 0 ? (detail.Length > 0 ? ". " : "") + "Y to undo" : ""), undoing ? 2.5f : 6f);
         }
         dirty = true;
     }
