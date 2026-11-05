@@ -24,7 +24,6 @@ internal sealed unsafe class Gear(Steps steps, Action<string> log) : IGear
     private readonly Dictionary<ulong, ItemView> views = [];
     private readonly Dictionary<ulong, string> names = [];
     private readonly Dictionary<Slot, List<ulong>> bag = [];
-    private bool namesLogged;
 
     public IReadOnlyList<Character> Characters { get; private set; } = [];
     public IReadOnlyList<ulong> Party { get; private set; } = [];
@@ -93,8 +92,6 @@ internal sealed unsafe class Gear(Steps steps, Action<string> log) : IGear
 
     public int WeaponType(ulong guid) => Bag().PPIGBKFJBOC(guid)?.TryCast<GPBLKEHGFPG>()?.KNOHDKCNNMK()?.FCKOGGBOKIG() is { } type ? (int)type : -1;
 
-    public string SetName(uint set) => $"Set {set}";
-
     // One wear request, the same message and send path as the game's equip dialog.
     public void Send(ulong avatar, ulong item)
     {
@@ -124,11 +121,6 @@ internal sealed unsafe class Gear(Steps steps, Action<string> log) : IGear
     private ItemView ArtifactView(ulong guid, CJJDJJNDMEP artifact)
     {
         DFHAIDJGOEG row = artifact.MPIHKBMLFFM();
-        if (!namesLogged)
-        {
-            namesLogged = true;
-            log($"artifact row strings: JFEFMNHDODG '{steps.Try("row JFEFMNHDODG", row.JFEFMNHDODG, "?")}' ACKLAGCCKLA '{steps.Try("row ACKLAGCCKLA", row.ACKLAGCCKLA, "?")}' item CMOLPLINBMI '{steps.Try("item name", artifact.CMOLPLINBMI, "?")}'");
-        }
         var subs = new List<ItemStat>();
         MAMOCEFGLOL main = artifact.MKDMDLIIOAN();
         foreach (MAMOCEFGLOL prop in Enum.GetValues<MAMOCEFGLOL>())
@@ -137,7 +129,7 @@ internal sealed unsafe class Gear(Steps steps, Action<string> log) : IGear
             if (value > 0f && prop != main && Stats.Label(prop) is { } label)
                 subs.Add(new ItemStat(label, value, Stats.IsPercent(prop)));
         }
-        return new ItemView(guid, (Slot)artifact.AEIHPGEAMFL(), artifact.NJIHDGGMLJH(), row.JFEFMNHDODG() ?? "", (row.ELKIIEKAANA() ?? "").Replace("Eff_", ""), (int)artifact.JODIFHIOBNF(),
+        return new ItemView(guid, (Slot)artifact.AEIHPGEAMFL(), artifact.NJIHDGGMLJH(), row.HDBLPDLEKOA() ?? "", row.IOCFNIBFHHN() ?? "", (int)artifact.JODIFHIOBNF(),
             (int)artifact.HDHGOLGLCEB() - 1, 0, artifact.GDOIKLIAKIL(), new ItemStat(Stats.Label(main) ?? main.ToString(), artifact.EPGFHKBNBGA(), Stats.IsPercent(main)), subs);
     }
 

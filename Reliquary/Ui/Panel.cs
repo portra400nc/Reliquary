@@ -16,6 +16,7 @@ internal sealed class Panel
     private enum Tab { Characters, Teams }
     private enum Layer { Main, Picker, Confirm, Menu, Rename }
 
+    private static readonly KeyCode[] UiKeys = [KeyCode.Escape, KeyCode.Return, KeyCode.UpArrow, KeyCode.DownArrow, KeyCode.LeftArrow, KeyCode.RightArrow, KeyCode.Q, KeyCode.E, KeyCode.F, KeyCode.N, KeyCode.G, KeyCode.R, KeyCode.PageUp, KeyCode.PageDown];
     private static readonly Slot[] SlotOrder = [Slot.Weapon, Slot.Flower, Slot.Plume, Slot.Sands, Slot.Goblet, Slot.Circlet];
     private static readonly Color Tint = Style.Hex(0x0b1326, 0.62f);
     private static readonly Color Bar = Style.Hex(0x080e1c, 0.45f);
@@ -78,7 +79,7 @@ internal sealed class Panel
             Pad.Poll(now, log);
             if (Pad.Held != PadButtons.None || Pad.Stick != PadButtons.None)
                 padLayout = true;
-            else if (Input.anyKeyDown || Input.GetMouseButtonDown(0))
+            else if (KeyboardUsed())
                 padLayout = false;
             tile.Update(now, Shapes.Get(Shapes.Sigil));
             applier.Update();
@@ -107,6 +108,17 @@ internal sealed class Panel
                 warning($"Reliquary failed: {error}");
             }
         }
+    }
+
+    // Input.anyKeyDown also fires for controller buttons on this game.
+    private static bool KeyboardUsed()
+    {
+        if (Input.GetMouseButtonDown(0))
+            return true;
+        foreach (KeyCode key in UiKeys)
+            if (Input.GetKeyDown(key))
+                return true;
+        return false;
     }
 
     private void Open()
@@ -828,7 +840,7 @@ internal sealed class Panel
     private string SetSummary(IEnumerable<ulong> items)
     {
         var sets = items.Select(gear.View).Where(view => view != null && view.Set != 0).GroupBy(view => view.Set).Where(group => group.Count() >= 2)
-            .OrderByDescending(group => group.Count()).Select(group => $"{gear.SetName(group.Key)} {group.Count()}").ToList();
+            .OrderByDescending(group => group.Count()).Select(group => $"{group.Count()}-piece set").ToList();
         return sets.Count > 0 ? string.Join(", ", sets) : items.Any() ? "No set bonus" : "Nothing chosen yet";
     }
 
@@ -1257,7 +1269,8 @@ internal sealed class Panel
             Glyph(parent, glyph, ink, x + 16f, y + (height - 24f) / 2f);
         else if (showGlyph)
             Pill(parent, glyph, x + 10f, y + (height - 20f) / 2f);
-        Print(parent, text, x + (showGlyph ? 40f : 0f), y, width - (showGlyph ? 44f : 0f), height, 13, textInk, showGlyph ? TextAnchor.MiddleLeft : TextAnchor.MiddleCenter);
+        float inset = showGlyph ? (glyph.Length == 1 ? 48f : 52f) : 0f;
+        Print(parent, text, x + inset, y, width - inset, height, 13, textInk, showGlyph ? TextAnchor.MiddleLeft : TextAnchor.MiddleCenter);
         Hit(parent, x, y, width, height, click);
     }
 }
