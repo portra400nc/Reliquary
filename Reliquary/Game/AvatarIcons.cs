@@ -1,6 +1,7 @@
 namespace Reliquary;
 
-// Character ID to icon name, generated from the 7.1 AvatarExcelConfigData. A character missing here shows initials.
+// Character ID to icon name, generated from the 7.1 AvatarExcelConfigData. A newer character tries their display name,
+// which is the icon name for many of them, and shows initials if the game has no such icon.
 internal static class AvatarIcons
 {
     private static readonly Dictionary<uint, string> Names = new()
@@ -140,5 +141,6 @@ internal static class AvatarIcons
         [10000999] = "PlayerGirl",
     };
 
-    public static string Of(uint id) => Names.TryGetValue(id, out string name) ? $"UI_AvatarIcon_{name}" : null;
+    public static string Of(uint id, string displayName)
+        => $"UI_AvatarIcon_{(Names.TryGetValue(id, out string name) ? name : displayName.Split(' ')[^1])}";
 }

@@ -11,7 +11,6 @@ internal sealed unsafe class GameIcons(Steps steps, Action<string> log)
     private const string Folder = "ART/UI/Atlas/ItemIcon/";
     private const string LoadSpriteField = "NativeMethodInfoPtr_LoadExternalSprite_Public_Static_Sprite_String_UInt32_0";
     private readonly Dictionary<string, Sprite> sprites = [];
-    private readonly HashSet<string> reported = [];
 
     public Sprite Get(string name)
     {
@@ -21,8 +20,6 @@ internal sealed unsafe class GameIcons(Steps steps, Action<string> log)
             return sprite;
         sprite = steps.Try("load an item icon", () => Load(Folder + name), null);
         sprites[name] = sprite;
-        if (sprite == null && reported.Add(name) && reported.Count <= 5)
-            log($"no icon named {name}");
         return sprite;
     }
 

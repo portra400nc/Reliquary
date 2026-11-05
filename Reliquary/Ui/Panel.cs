@@ -60,7 +60,7 @@ internal sealed class Panel
     private float toastUntil;
     private IReadOnlyList<Move> undo = [];
     private float nextWarning;
-    private bool flagsLogged;
+    private bool portraitsLogged;
 
     public Panel(Action<string> log, Action<string> warning)
     {
@@ -128,11 +128,10 @@ internal sealed class Panel
         if (gear.Characters.Count == 0)
             return;
         LoadLibrary(gear.Characters[0].Guid);
-        if (!flagsLogged)
+        if (!portraitsLogged)
         {
-            flagsLogged = true;
-            steps.Run("log the item flags", gear.LogFlags);
-            log($"portraits known for {gear.Characters.Count(c => c.Icon != null)} of {gear.Characters.Count}: unknown {string.Join(", ", gear.Characters.Where(c => c.Icon == null).Select(c => c.Name))}");
+            portraitsLogged = true;
+            log($"no portrait icon for: {string.Join(", ", gear.Characters.Where(c => icons.Get(c.Icon) == null).Select(c => c.Name))}");
         }
         tile.Leave();
         DestroyPrompt();

@@ -47,7 +47,7 @@ internal sealed unsafe class Gear(Steps steps, Action<string> log) : IGear
                     holders[item] = guid;
             string name = actor.MFGJHJKKBKF() ?? "Character";
             names[guid] = name;
-            characters.Add(new Character(guid, name, name.Length >= 2 ? name[..2] : name, (int)actor.IKILENBHAIF(), AvatarIcons.Of(actor.IBCHLEGMHHL)));
+            characters.Add(new Character(guid, name, name.Length >= 2 ? name[..2] : name, (int)actor.IKILENBHAIF(), AvatarIcons.Of(Singleton<PIDAHDPFKBG>._instance.OOIHJMDNNDK(guid), name)));
         }
         Characters = characters;
     }
@@ -148,36 +148,10 @@ internal sealed unsafe class Gear(Steps steps, Action<string> log) : IGear
             else if (Stats.Label(prop) is { } label)
                 subs.Add(new ItemStat(label, value, Stats.IsPercent(prop)));
         }
-        return new ItemView(guid, Slot.Weapon, weapon.NJIHDGGMLJH(), row.HDBLPDLEKOA() ?? "", row.IOCFNIBFHHN() ?? "", (int)row.JODIFHIOBNF(), (int)weapon.HDHGOLGLCEB(), (int)weapon.ALEMBDDBKCA() + 1, 0, main, subs, Locked(weapon));
+        return new ItemView(guid, Slot.Weapon, weapon.NJIHDGGMLJH(), row.HDBLPDLEKOA() ?? "", row.IOCFNIBFHHN() ?? "", (int)row.JODIFHIOBNF(), (int)weapon.HDHGOLGLCEB(), (int)weapon.NDDHDBFLLDG() + 1, 0, main, subs, Locked(weapon));
     }
 
-    private static bool Locked(NMHKDGOMKIM item) => item.EAGHGHNLGKD();
-
-    // Which of the item's flags is the lock and which is the New badge, read against the game's own screens.
-    public void LogFlags()
-    {
-        HDAGEENEGPJ source = Bag();
-        foreach (MBAMMBNKDGF type in new[] { MBAMMBNKDGF.ITEM_WEAPON, MBAMMBNKDGF.ITEM_RELIQUARY })
-        {
-            int[] counts = new int[5];
-            int total = 0;
-            string sample = "";
-            int count = source.KPHFFOKOHJG(type);
-            for (int i = 0; i < IndexBound && total < count; i++)
-            {
-                if (source.IPBCBBGEKPB(type, i)?.KCJMDNBKFJE() is not { } item)
-                    continue;
-                total++;
-                bool[] flags = [item.PNBOFDKDEKA(), item.EAGHGHNLGKD(), item.LOLNPMELBFI(), item.KFLGFINKJHP, item.PMOMDIHCFKO];
-                for (int f = 0; f < flags.Length; f++)
-                    if (flags[f])
-                        counts[f]++;
-                if (i < 6)
-                    sample += $" {item.NJIHDGGMLJH()}:{string.Join("", flags.Select(flag => flag ? 1 : 0))}";
-            }
-            log($"{type} {total}: PNBOFDKDEKA {counts[0]} EAGHGHNLGKD {counts[1]} LOLNPMELBFI {counts[2]} KFLGFINKJHP {counts[3]} PMOMDIHCFKO {counts[4]}.{sample}");
-        }
-    }
+    private static bool Locked(NMHKDGOMKIM item) => item.NIPKPGPKLLL() == LNPCOCANJNM.Lock;
 
     private static HDAGEENEGPJ Bag() => Singleton<HDAGEENEGPJ>._instance ?? throw new InvalidOperationException("no bag");
 
