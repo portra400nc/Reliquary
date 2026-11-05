@@ -60,6 +60,7 @@ internal sealed class Panel
     private float toastUntil;
     private IReadOnlyList<Move> undo = [];
     private float nextWarning;
+    private bool flagsLogged;
 
     public Panel(Action<string> log, Action<string> warning)
     {
@@ -127,6 +128,12 @@ internal sealed class Panel
         if (gear.Characters.Count == 0)
             return;
         LoadLibrary(gear.Characters[0].Guid);
+        if (!flagsLogged)
+        {
+            flagsLogged = true;
+            steps.Run("log the item flags", gear.LogFlags);
+            log($"portraits known for {gear.Characters.Count(c => c.Icon != null)} of {gear.Characters.Count}: unknown {string.Join(", ", gear.Characters.Where(c => c.Icon == null).Select(c => c.Name))}");
+        }
         tile.Leave();
         DestroyPrompt();
         ulong active = gear.Active();
@@ -279,7 +286,7 @@ internal sealed class Panel
 
     private void PickerInput(float now)
     {
-        const int Columns = 6;
+        const int Columns = PickerColumns;
         if (Repeat(PadButtons.DpadLeft, KeyCode.LeftArrow, now))
             MovePicker(-1);
         else if (Repeat(PadButtons.DpadRight, KeyCode.RightArrow, now))
@@ -803,6 +810,8 @@ internal sealed class Panel
         DrawFooter(parent, inSlots ? "Change item" : "Open template");
     }
 
+    private const int PickerColumns = 7, PickerRows = 4;
+
     private enum Selection { None, Current, Focus }
 
     private float DrawTemplateRow(RectTransform parent, CharacterTemplate item, float y, Selection selection)
@@ -1051,29 +1060,21 @@ internal sealed class Panel
 
     private void DrawPicker(RectTransform parent)
     {
-        const int Columns = 6, Rows = 5;
-        const float CardWidth = 132f, CardHeight = 112f, Gap = 8f;
+        const int Columns = PickerColumns, Rows = PickerRows;
+        const float CardWidth = 112f, CardHeight = 146f, Gap = 8f;
         Box(parent, 0f, 0f, 1280f, 74f, Bar, null);
         Print(parent, Selected?.Name ?? "", 28f, 22f, 300f, 30f, 21, Style.Text, TextAnchor.MiddleLeft);
         Print(parent, $"{pickerSlot} for {Current.Name}", 340f, 26f, 400f, 24f, 16, Style.Cream, TextAnchor.MiddleLeft);
-        Print(parent, pickerFree ? "Showing items nobody wears" : "Showing all items", 28f, 84f, 400f, 20f, 13, Style.Dim, TextAnchor.MiddleLeft);
+        Print(parent, pickerFree ? "Showing items nobody wears" : "Showing all items", 28f, 80f, 400f, 20f, 13, Style.Dim, TextAnchor.MiddleLeft);
         int row = pickerCursor / Columns;
-        int first = Math.Max(0, Math.Min(row - 2, (pickerItems.Count - 1) / Columns - Rows + 1)) * Columns;
+        int first = Math.Max(0, Math.Min(row - 1, (pickerItems.Count - 1) / Columns - Rows + 1)) * Columns;
         for (int i = first; i < pickerItems.Count && i < first + Columns * Rows; i++)
         {
             int local = i - first;
-            float x = 28f + (local % Columns) * (CardWidth + Gap), y = 110f + (local / Columns) * (CardHeight + Gap);
-            ItemView view = gear.View(pickerItems[i]);
-            if (view == null)
+            float x = 28f + (local % Columns) * (CardWidth + Gap), y = 106f + (local / Columns) * (CardHeight + Gap);
+            if (gear.View(pickerItems[i]) is not { } view)
                 continue;
-            Box(parent, x, y, CardWidth, CardHeight, Paper, Shapes.Card);
-            Icon_(parent, view, x + (CardWidth - 76f) / 2f, y + 2f, 76f);
-            Print(parent, $"+{view.Level}", x + 6f, y + 4f, 40f, 16f, 11, Style.White, TextAnchor.MiddleLeft);
-            Wrap(parent, view.Name, x + 4f, y + 78f, CardWidth - 8f, 32f, 11, PaperInk, TextAnchor.MiddleCenter);
-            if (gear.Holder(view.Guid) is { } holder && gear.Characters.FirstOrDefault(c => c.Guid == holder) is { } who)
-                Face(parent, who, x + CardWidth - 30f, y + 4f, 26f, false);
-            if (i == pickerCursor)
-                Frame(parent, x, y, CardWidth, CardHeight);
+            ItemCard(parent, view, x, y, CardWidth, CardHeight, i == pickerCursor);
             int target = i;
             Hit(parent, x, y, CardWidth, CardHeight, () => { pickerCursor = target; Pick(); });
         }
@@ -1234,18 +1235,56 @@ internal sealed class Panel
         Fill(label.rectTransform);
     }
 
+    // The character's portrait clipped to a circle, or their initials when the icon table does not know them.
     private void Face(Transform parent, Character who, float x, float y, float size, bool focus)
     {
         Color fill = ElementColors[Math.Clamp(who.Element, 0, ElementColors.Length - 1)];
-        if (focus)
-        {
-            Image ring = Picture(parent, "Ring", Shapes.Knob, Style.Cream);
-            TopLeft(ring.rectTransform, x - 3f, y - 3f, size + 6f, size + 6f);
-        }
-        Image face = Picture(parent, "Face", Shapes.Knob, fill);
+        Image face = Picture(parent, "Face", Shapes.Knob, Style.Hex(0x2a3144));
         TopLeft(face.rectTransform, x, y, size, size);
-        Text label = ui.Label(face.rectTransform, "Text", who.Initials, (int)(size * 0.36f), Style.White, TextAnchor.MiddleCenter);
-        Fill(label.rectTransform);
+        if (icons.Get(who.Icon) is { } sprite)
+        {
+            face.gameObject.AddComponent<Mask>().showMaskGraphic = true;
+            Image portrait = Picture(face.rectTransform, "Portrait", null, Style.White);
+            portrait.sprite = sprite;
+            portrait.preserveAspect = true;
+            Fill(portrait.rectTransform);
+        }
+        else
+        {
+            face.color = fill;
+            Text label = ui.Label(face.rectTransform, "Text", who.Initials, (int)(size * 0.36f), Style.White, TextAnchor.MiddleCenter);
+            Fill(label.rectTransform);
+        }
+        if (focus)
+            Box(parent, x + 4f, y + size + 4f, size - 8f, 3f, Style.Cream, null);
+    }
+
+    // The game's own item card: art on a rarity plate, stars on its lower edge, level on a light strip, the lock and
+    // refinement in the top left and the wearer in the top right.
+    private void ItemCard(Transform parent, ItemView view, float x, float y, float width, float height, bool focus)
+    {
+        Box(parent, x, y, width, height, Style.Strip, Shapes.Card);
+        Icon_(parent, view, x, y, width);
+        Text stars = Print(parent, new string('\u2605', Math.Clamp(view.Rarity, 0, 5)), x, y + width - 22f, width, 20f, 15, Style.Star, TextAnchor.MiddleCenter);
+        stars.gameObject.AddComponent<Outline>().effectColor = Style.StarOutline;
+        Print(parent, view.Slot == Slot.Weapon ? $"Lv. {view.Level}" : $"+{view.Level}", x, y + width, width, height - width, 15, Style.StripInk, TextAnchor.MiddleCenter);
+        float badge = y + 4f;
+        if (view.Slot == Slot.Weapon)
+        {
+            Box(parent, x + 4f, badge, 18f, 18f, view.Refinement >= 5 ? Style.Hex(0xd98a2f) : Style.Hex(0x3c3f4a, 0.92f), Shapes.Bumper);
+            Print(parent, view.Refinement.ToString(), x + 4f, badge, 18f, 18f, 12, Style.White, TextAnchor.MiddleCenter);
+            badge += 21f;
+        }
+        if (view.Locked)
+        {
+            Box(parent, x + 4f, badge, 18f, 18f, Style.Hex(0xe9e5dc), Shapes.Bumper);
+            Image padlock = Picture(parent, "Lock", Shapes.LockBody, Style.Hex(0xc6463c));
+            TopLeft(padlock.rectTransform, x + 7f, badge + 2f, 12f, 14f);
+        }
+        if (gear.Holder(view.Guid) is { } holder && gear.Characters.FirstOrDefault(c => c.Guid == holder) is { } who)
+            Face(parent, who, x + width - 30f, y - 6f, 34f, false);
+        if (focus)
+            Frame(parent, x, y, width, height);
     }
 
     private void Icon_(Transform parent, ItemView view, float x, float y, float size)

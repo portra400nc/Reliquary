@@ -31,6 +31,7 @@ internal static class Shapes
     public static readonly Shape SwitchOn = Framed("SwitchOn", Style.SwitchWidth, Style.SwitchHeight, Style.SwitchHeight / 2f, 0f, 1.5f,
         Style.Cream, Style.SwitchRingOn);
     public static readonly Shape Sigil = Solid("Sigil", 36f, 36f, 0f, Convex((18f, 0f), (36f, 18f), (18f, 36f), (0f, 18f)), Style.White);
+    public static readonly Shape LockBody = Solid("Lock", 12f, 14f, 0f, Union(Box(1f, 6f, 10f, 8f, 1.5f, 1.5f, 1.5f, 1.5f), Line(3.5f, 6f, 3.5f, 3.5f, 1.6f), Line(8.5f, 6f, 8.5f, 3.5f, 1.6f), Line(3.5f, 3f, 8.5f, 3f, 1.6f)), Style.White);
     public static readonly Shape Knob = Solid("Knob", Style.KnobSize, Style.KnobSize, 0f, Circle(10f, 10f, 10f), Style.Light);
     public static readonly Shape Arrow = Solid("Arrow", 7f, 10f, 0f, Convex((0f, 0f), (7f, 5f), (0f, 10f)), Style.White);
     public static readonly Shape Close = new("Close", Style.BackSize, Style.BackSize, 0f, Layers((Circle(17f, 17f, 17f), Style.Light),
