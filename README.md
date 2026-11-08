@@ -53,7 +53,7 @@ Reliquary will not apply a team when two members need the same item.
 
 ## Applying
 
-Reliquary lists every change first. Equipping an item another character holds gives that character your old item, as in the game. Press Y right after applying to undo it. Items you no longer own are skipped.
+Reliquary lists every change first. Equipping an item another character holds gives that character your old item, as in the game. Right after applying, press Y or click Undo to put the old gear back. Deleting a template asks first. Items you no longer own are skipped.
 
 ## Limits
 

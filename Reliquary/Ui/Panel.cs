@@ -14,7 +14,7 @@ namespace Reliquary.Ui;
 internal sealed partial class Panel
 {
     private enum Tab { Characters, Teams }
-    private enum Layer { Main, Picker, WeaponFilter, ArtifactSort, SetFilter, Confirm, Menu, Rename, Chooser, ChooserFilter }
+    private enum Layer { Main, Picker, WeaponFilter, ArtifactSort, SetFilter, Confirm, Menu, Rename, Delete, Chooser, ChooserFilter }
 
     private static readonly KeyCode[] UiKeys = [KeyCode.Escape, KeyCode.Return, KeyCode.UpArrow, KeyCode.DownArrow, KeyCode.LeftArrow, KeyCode.RightArrow, KeyCode.Q, KeyCode.E, KeyCode.F, KeyCode.N, KeyCode.G, KeyCode.R, KeyCode.PageUp, KeyCode.PageDown, KeyCode.C];
     private static readonly Slot[] SlotOrder = [Slot.Weapon, Slot.Flower, Slot.Plume, Slot.Sands, Slot.Goblet, Slot.Circlet];
@@ -96,6 +96,7 @@ internal sealed partial class Panel
             {
                 LoadOnePortrait();
                 UpdateCursor();
+                AnimatePrompts(now);
             }
             if (!open)
             {
@@ -245,6 +246,7 @@ internal sealed partial class Panel
                 break;
             case Layer.Menu: MenuInput(now); break;
             case Layer.Rename: RenameInput(); break;
+            case Layer.Delete: DeleteInput(now); break;
         }
     }
 
@@ -286,8 +288,10 @@ internal sealed partial class Panel
         }
         else if (Pressed(PadButtons.X, KeyCode.F))
             AskApply();
-        else if (Pressed(PadButtons.Y, KeyCode.N))
+        else if (Pad.Pressed(PadButtons.Y))
             undoOrCreate();
+        else if (Input.GetKeyDown(KeyCode.N))
+            Create();
         else if (Pressed(PadButtons.View, KeyCode.G))
             SaveEquipped();
         else if (Pressed(PadButtons.LeftStick, KeyCode.C))
@@ -320,10 +324,12 @@ internal sealed partial class Panel
             ChangeMemberTemplate(1);
         else if (Pressed(PadButtons.X, KeyCode.F))
             AskApply();
-        else if (Pressed(PadButtons.Y, KeyCode.N))
+        else if (Pad.Pressed(PadButtons.Y))
         {
             if (undo.Count > 0) Undo(); else SaveParty();
         }
+        else if (Input.GetKeyDown(KeyCode.N))
+            SaveParty();
         else if (Pressed(PadButtons.Menu, KeyCode.R) && CurrentTeam != null)
             OpenMenu();
     }
@@ -418,7 +424,7 @@ internal sealed partial class Panel
         }
         else if (Pressed(PadButtons.A, KeyCode.Return))
         {
-            if (menuIndex == 0) StartRename(); else DeleteSelected();
+            if (menuIndex == 0) StartRename(); else AskDelete();
         }
         else if (Pressed(PadButtons.B, KeyCode.Escape))
             Back();
@@ -443,12 +449,8 @@ internal sealed partial class Panel
             rename = text.ToString();
             dirty = true;
         }
-        if (Pressed(PadButtons.A, KeyCode.Return) && rename.Trim().Length > 0)
-        {
-            if (tab == Tab.Characters) Selected!.Name = rename.Trim(); else CurrentTeam!.Name = rename.Trim();
-            Save();
-            Back();
-        }
+        if (Pressed(PadButtons.A, KeyCode.Return))
+            SaveRename();
         else if (Pressed(PadButtons.B, KeyCode.Escape))
             Back();
     }
@@ -536,7 +538,7 @@ internal sealed partial class Panel
         library.Characters.Add(new CharacterTemplate { Avatar = Current.Guid, Name = $"Template {Templates.Count + 1}", Items = gear.EquippedItems(Current.Guid) });
         Save();
         template = Templates.Count - 1;
-        Toast("Saved equipped gear as a template", "");
+        Toast("Saved equipped gear as a template", "", kind: ToastKind.Done);
         dirty = true;
     }
 
@@ -552,7 +554,7 @@ internal sealed partial class Panel
         library.Teams.Add(team_);
         team = library.Teams.Count - 1;
         Save();
-        Toast("Saved the party's equipped gear as a team", "");
+        Toast("Saved the party's equipped gear as a team", "", kind: ToastKind.Done);
         dirty = true;
     }
 
@@ -791,7 +793,7 @@ internal sealed partial class Panel
         plan = Planner.Plan(templates, gear);
         if (plan.Clashes.Count > 0)
         {
-            Toast("A team member needs an item another member needs", "Choose another template for one of them");
+            Toast("A team member needs an item another member needs", "Choose another template for one of them", kind: ToastKind.Warn);
             dirty = true;
             return;
         }
@@ -809,7 +811,8 @@ internal sealed partial class Panel
     {
         layer = Layer.Main;
         applier.Start(plan.Moves);
-        Toast("Applying", $"0 of {plan.Moves.Count}", 600f);
+        shownDone = -1;
+        Toast("Applying", "", 600f, ToastKind.Busy);
         dirty = true;
     }
 
@@ -819,7 +822,8 @@ internal sealed partial class Panel
         undo = [];
         gear.Refresh();
         applier.Start(moves);
-        Toast("Undoing", "", 600f);
+        shownDone = -1;
+        Toast("Undoing", "", 600f, ToastKind.Busy);
         dirty = true;
     }
 
@@ -828,7 +832,7 @@ internal sealed partial class Panel
         gear.Refresh();
         undo = Planner.Undo(done);
         if (failed is { } refused)
-            Toast($"{done.Count} items changed. The game refused the next one", $"{gear.View(refused.Item)?.Name ?? "An item"} for {gear.NameOf(refused.Avatar)}. Y to undo", 8f);
+            Toast($"{done.Count} items changed. The game refused the next one", $"{gear.View(refused.Item)?.Name ?? "An item"} for {gear.NameOf(refused.Avatar)}", 8f, ToastKind.Warn);
         else
         {
             var swapped = done.Where(move => move.Holder is not null).ToList();
@@ -836,13 +840,14 @@ internal sealed partial class Panel
             bool undoing = toast == "Undoing";
             if (undoing)
                 undo = [];
-            Toast(undoing ? "Undone" : $"Applied {done.Count} item{(done.Count == 1 ? "" : "s")}", undoing ? "" : detail + (undo.Count > 0 ? (detail.Length > 0 ? ". " : "") + "Y to undo" : ""), undoing ? 2.5f : 6f);
+            Toast(undoing ? "Undone" : $"Applied {done.Count} item{(done.Count == 1 ? "" : "s")}", undoing ? "" : detail, undoing ? 2.5f : 6f, ToastKind.Done);
         }
         dirty = true;
     }
 
-    private void Toast(string text, string detail, float seconds = 2.5f)
+    private void Toast(string text, string detail, float seconds = 2.5f, ToastKind kind = ToastKind.Info)
     {
+        toastKind = kind;
         toast = text;
         toastDetail = detail;
         toastUntil = Time.unscaledTime + seconds;
@@ -973,6 +978,7 @@ internal sealed partial class Panel
         if (layer == Layer.Confirm) DrawConfirm(rect);
         if (layer == Layer.Menu) DrawMenu(rect);
         if (layer == Layer.Rename) DrawRename(rect);
+        if (layer == Layer.Delete) DrawDelete(rect);
         if (toastUntil != 0f)
             DrawToast(rect);
     }
@@ -1241,6 +1247,8 @@ internal sealed partial class Panel
     private void DrawFooter(RectTransform parent, string primary)
     {
         Band(parent, 740f, 60f, Bar);
+        if (Prompting)
+            return;
         if (!padLayout)
         {
             EscHint(parent, "Close");
@@ -1285,6 +1293,8 @@ internal sealed partial class Panel
             Print(parent, "Choose another template for one of them. The team cannot be applied until then.", 44f, 698f, 1190f + wide, 18f, 12, Style.Dim, TextAnchor.MiddleLeft);
         }
         Band(parent, 740f, 60f, Bar);
+        if (Prompting)
+            return;
         Color applyInk = check.CanApply ? Style.Text : Style.Dim;
         if (padLayout)
         {
@@ -1608,71 +1618,6 @@ internal sealed partial class Panel
         }
     }
 
-    private void DrawConfirm(RectTransform parent)
-    {
-        Cover(parent, Style.Hex(0x060a14, 0.6f));
-        int lines = Math.Min(plan.Moves.Count, 8);
-        float height = 150f + lines * 38f + (plan.Missing.Count > 0 ? 22f : 0f);
-        float X = 290f + wide / 2f;
-        const float Width = 700f;
-        float y = (800f - height) / 2f;
-        Box(parent, X, y, Width, height, Paper, Shapes.Card);
-        Print(parent, planTitle, X + 28f, y + 20f, Width - 56f, 28f, 20, PaperInk, TextAnchor.MiddleLeft);
-        string summary = $"{plan.Moves.Count} item{(plan.Moves.Count == 1 ? "" : "s")} change.";
-        Print(parent, summary, X + 28f, y + 50f, Width - 56f, 18f, 13, PaperInk, TextAnchor.MiddleLeft);
-        float line = y + 76f;
-        foreach (Move move in plan.Moves.Take(lines))
-        {
-            string to = gear.View(move.Item)?.Name ?? "?";
-            string from = gear.View(move.From)?.Name ?? "Empty";
-            Print(parent, tab == Tab.Teams ? gear.NameOf(move.Avatar) : move.Slot.ToString(), X + 28f, line, 90f, 18f, 13, PaperInk, TextAnchor.MiddleLeft);
-            Print(parent, from, X + 120f, line, 240f, 18f, 13, PaperInk, TextAnchor.MiddleLeft);
-            Print(parent, "›", X + 362f, line, 16f, 18f, 13, PaperInk, TextAnchor.MiddleLeft);
-            Print(parent, to, X + 384f, line, 300f, 18f, 13, PaperInk, TextAnchor.MiddleLeft);
-            if (move.Holder is { } holder)
-                Print(parent, $"{gear.NameOf(holder)} gets {from}", X + 384f, line + 17f, 300f, 16f, 12, Style.Hex(0xa8732a), TextAnchor.MiddleLeft);
-            line += 38f;
-        }
-        if (plan.Moves.Count > lines)
-            Print(parent, $"And {plan.Moves.Count - lines} more", X + 28f, line - 2f, 300f, 16f, 12, PaperInk, TextAnchor.MiddleLeft);
-        if (plan.Missing.Count > 0)
-            Print(parent, $"{plan.Missing.Count} item{(plan.Missing.Count == 1 ? " is" : "s are")} no longer owned and will be skipped.", X + 28f, y + height - 76f, Width - 56f, 18f, 12, Style.Hex(0xb04b3f), TextAnchor.MiddleLeft);
-        Action back = Back, confirm = Confirm;
-        Button_(parent, "Cancel", "B", X + 150f, y + height - 54f, 190f, 40f, false, back, PaperInk);
-        Button_(parent, tab == Tab.Teams ? "Apply team" : "Apply template", "A", X + 360f, y + height - 54f, 190f, 40f, true, confirm);
-    }
-
-    private void DrawMenu(RectTransform parent)
-    {
-        Cover(parent, Style.Hex(0x060a14, 0.6f));
-        float X = 490f + wide / 2f;
-        const float Y = 310f;
-        Box(parent, X, Y, 300f, 180f, Paper, Shapes.Card);
-        Print(parent, tab == Tab.Characters ? Selected?.Name ?? "" : CurrentTeam?.Name ?? "", X + 20f, Y + 16f, 260f, 24f, 16, PaperInk, TextAnchor.MiddleCenter);
-        Action rename_ = StartRename, delete = DeleteSelected;
-        Button_(parent, "Rename", "", X + 40f, Y + 52f, 220f, 40f, menuIndex == 0, rename_, PaperInk);
-        Button_(parent, "Delete", "", X + 40f, Y + 102f, 220f, 40f, menuIndex == 1, delete, PaperInk);
-    }
-
-    private void DrawRename(RectTransform parent)
-    {
-        Cover(parent, Style.Hex(0x060a14, 0.6f));
-        float X = 390f + wide / 2f;
-        const float Y = 330f;
-        Box(parent, X, Y, 500f, 140f, Paper, Shapes.Card);
-        Print(parent, "Type a name", X + 24f, Y + 16f, 450f, 20f, 15, PaperInk, TextAnchor.MiddleLeft);
-        Print(parent, rename + "_", X + 24f, Y + 48f, 450f, 28f, 18, PaperInk, TextAnchor.MiddleLeft);
-        Print(parent, padLayout ? "Steam + X opens the Deck's keyboard. A saves, B cancels." : "Enter saves, Esc cancels.", X + 24f, Y + 96f, 450f, 18f, 12, PaperInk, TextAnchor.MiddleLeft);
-    }
-
-    private void DrawToast(RectTransform parent)
-    {
-        float width = Math.Max(toast.Length, toastDetail.Length) * 8f + 60f;
-        Box(parent, (Width - width) / 2f, 668f, width, 58f, Style.Hex(0x141b2a, 0.96f), Shapes.Card);
-        Print(parent, toast, 0f, 676f, Width, 22f, 14, Style.Text, TextAnchor.MiddleCenter);
-        Print(parent, toastDetail, 0f, 698f, Width, 18f, 12, Style.Dim, TextAnchor.MiddleCenter);
-    }
-
     // Parts
 
     private Text Print(Transform parent, string text, float x, float y, float width, float height, int size, Color color, TextAnchor alignment)
@@ -1813,25 +1758,25 @@ internal sealed partial class Panel
             Frame(parent, x, y, width, height);
     }
 
-    private void Icon_(Transform parent, ItemView view, float x, float y, float size)
+    private void Icon_(Transform parent, ItemView view, float x, float y, float size, float alpha = 1f)
     {
         int rarity = Math.Clamp(view.Rarity, 0, Shapes.Art.Length - 1);
-        Image art = Picture(parent, "Art", Shapes.Art[rarity], Style.White);
+        Image art = Picture(parent, "Art", Shapes.Art[rarity], Style.WithAlpha(Style.White, alpha));
         art.type = Image.Type.Simple;
         TopLeft(art.rectTransform, x, y, size, size);
         if (icons.Get(view.Icon) is { } sprite)
         {
-            Image image = Picture(parent, "Icon", null, Style.White);
+            Image image = Picture(parent, "Icon", null, Style.WithAlpha(Style.White, alpha));
             image.sprite = sprite;
             image.preserveAspect = true;
             TopLeft(image.rectTransform, x, y, size, size);
         }
     }
 
-    private void Button_(Transform parent, string text, string glyph, float x, float y, float width, float height, bool primary, Action click, Color? outline = null)
+    private void Button_(Transform parent, string text, string glyph, float x, float y, float width, float height, bool primary, Action click, Color? outline = null, Color? fill = null)
     {
-        Box(parent, x, y, width, height, primary ? Style.Light : outline == null ? Style.Band : Style.Hex(0x3f3b30, 0.12f), Shapes.Pill);
-        Color textInk = primary ? Style.BackInk : outline ?? Style.Text;
+        Box(parent, x, y, width, height, fill ?? (primary ? Style.Light : outline == null ? Style.Band : Style.Hex(0x3f3b30, 0.12f)), Shapes.Pill);
+        Color textInk = fill != null ? Style.White : primary ? Style.BackInk : outline ?? Style.Text;
         bool showGlyph = padLayout && glyph.Length > 0;
         if (showGlyph)
             Mark(parent, glyph, x + 14f, y + (height - 24f) / 2f);

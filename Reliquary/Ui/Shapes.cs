@@ -17,6 +17,7 @@ internal static class Shapes
 
     // The sliced shapes are two texture pixels wider and taller than their borders, which is where they stretch.
     private const float Stretch = 2f / Density;
+    private const float DialogRadius = 6f, RingRadius = Style.ChipHeight / 2f + 3f;
 
     public static readonly Shape Face = Glyph("Face", 24f, 24f, Circle(12f, 12f, 12f));
     public static readonly Shape Dpad = Glyph("Dpad", 24f, 24f, Circle(12f, 12f, 12f),
@@ -57,6 +58,14 @@ internal static class Shapes
 
     public static readonly Shape Pill = Solid("Pill", Style.ChipHeight + Stretch, Style.ChipHeight + Stretch, Style.ChipHeight / 2f,
         Box(0f, 0f, Style.ChipHeight + Stretch, Style.ChipHeight + Stretch, Style.ChipHeight / 2f), Style.White);
+    // A prompt's panel and its messages: dark, with a faint cream edge.
+    public static readonly Shape Dialog = Framed("Dialog", 2f * DialogRadius + Stretch, 2f * DialogRadius + Stretch, DialogRadius, DialogRadius, 1f,
+        Style.Hex(0x181f2e, 0.97f), Style.Hex(0xd3bc8e, 0.26f));
+    // The focus ring around a button, 3 units outside its pill.
+    public static readonly Shape PillRing = Solid("PillRing", 2f * RingRadius + Stretch, 2f * RingRadius + Stretch, RingRadius,
+        Ring(Box(0f, 0f, 2f * RingRadius + Stretch, 2f * RingRadius + Stretch, RingRadius), 2f), Style.White);
+    public static readonly Shape Spinner = Solid("Spinner", 22f, 22f, 0f, Subtract(Ring(Circle(11f, 11f, 10f), 2f), Convex((11f, 11f), (22f, 0f), (22f, 11f))), Style.White);
+    public static readonly Shape Check = Solid("Check", 16f, 16f, 0f, Union(Line(3f, 8.5f, 6.5f, 12f, 1.1f), Line(6.5f, 12f, 13f, 4.5f, 1.1f)), Style.White);
     public static readonly Shape Badge = Solid("Badge", 12f + Stretch, 12f + Stretch, 6f, Box(0f, 0f, 12f + Stretch, 12f + Stretch, 6f, 6f, 4f, 4f), Style.Light);
 
     public static readonly Shape Card = Solid("Card", 2f * Style.CardRadius + Stretch, 2f * Style.CardRadius + Stretch, Style.CardRadius,

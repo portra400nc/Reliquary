@@ -12,6 +12,8 @@ internal sealed class Applier(Gear gear, Action<IReadOnlyList<Move>, Move?> fini
     private bool waiting;
 
     public bool Busy => waiting || queue.Count > 0;
+    public int Done => done.Count;
+    public int Total { get; private set; }
 
     public void Start(IEnumerable<Move> moves)
     {
@@ -19,6 +21,7 @@ internal sealed class Applier(Gear gear, Action<IReadOnlyList<Move>, Move?> fini
         done.Clear();
         foreach (Move move in moves)
             queue.Enqueue(move);
+        Total = queue.Count;
         Next();
     }
 
