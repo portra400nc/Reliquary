@@ -66,7 +66,7 @@ internal sealed partial class Panel
     private float toastUntil;
     private IReadOnlyList<Move> undo = [];
     private float nextWarning;
-    private float extraX, extraY;
+    private float wide, extraY;
     private int screenWidth, screenHeight;
     private RectTransform promptBox;
 
@@ -330,7 +330,7 @@ internal sealed partial class Panel
 
     private void PickerInput(float now)
     {
-        const int Columns = PickerColumns;
+        int Columns = PickerColumns;
         if (Repeat(PadButtons.DpadLeft, KeyCode.LeftArrow, now))
             MovePicker(-1);
         else if (Repeat(PadButtons.DpadRight, KeyCode.RightArrow, now))
@@ -938,7 +938,7 @@ internal sealed partial class Panel
         Fill(Picture(screen, "Tint", null, Tint).rectTransform);
         MeasureScreen();
         RectTransform rect = Node("Stage", screen);
-        Place(rect, V(0.5f, 0.5f), V(0.5f, 0.5f), V(0.5f, 0.5f), V(0f, 0f), V(Style.ReferenceWidth, Style.ReferenceHeight));
+        Place(rect, V(0.5f, 0.5f), V(0.5f, 0.5f), V(0.5f, 0.5f), V(0f, 0f), V(Width, Style.ReferenceHeight));
         switch (layer)
         {
             case Layer.Picker: DrawPicker(rect); break;
@@ -977,26 +977,30 @@ internal sealed partial class Panel
             DrawToast(rect);
     }
 
-    // The canvas keeps a 1280x800 stage whole and centered. These reach past it to the screen's edges.
+    // The stage is 800 units tall and as wide as the screen, never narrower than 1280. On a screen wider than 16:10,
+    // wide is the extra width: left groups stay at the left edge, right groups move by wide, and the middle grows.
+    // On a narrower screen the stage stays 1280 wide and extraY reaches the screen's top and bottom edges.
     private void MeasureScreen()
     {
         float scale = Math.Min(Screen.width / Style.ReferenceWidth, Screen.height / Style.ReferenceHeight);
-        extraX = (Screen.width / scale - Style.ReferenceWidth) / 2f;
+        wide = Math.Max(0f, Screen.width / scale - Style.ReferenceWidth);
         extraY = (Screen.height / scale - Style.ReferenceHeight) / 2f;
     }
+
+    private float Width => Style.ReferenceWidth + wide;
 
     private void Band(Transform parent, float y, float height, Color color)
     {
         float top = y <= 0f ? y - extraY : y;
         float bottom = y + height >= Style.ReferenceHeight ? y + height + extraY : y + height;
-        Box(parent, -extraX, top, Style.ReferenceWidth + 2f * extraX, bottom - top, color, null);
+        Box(parent, 0f, top, Width, bottom - top, color, null);
     }
 
     private void LeftBand(Transform parent, float y, float width, float height, Color color)
     {
         float top = y <= 0f ? y - extraY : y;
         float bottom = y + height >= Style.ReferenceHeight ? y + height + extraY : y + height;
-        Box(parent, -extraX, top, width + extraX, bottom - top, color, null);
+        Box(parent, 0f, top, width, bottom - top, color, null);
     }
 
     private void Cover(Transform parent, Color color) => Band(parent, 0f, Style.ReferenceHeight, color);
@@ -1020,7 +1024,7 @@ internal sealed partial class Panel
         Button_(parent, "All characters", "L3", 560f, 20f, 150f, 34f, false, chooser);
         const int Shown = 9;
         int count = gear.Characters.Count;
-        float faces = 1280f - 28f - (Shown * 50f) - (padLayout ? 40f : 0f);
+        float faces = Width - 28f - (Shown * 50f) - (padLayout ? 40f : 0f);
         if (padLayout)
             Mark(parent, "LB", faces - 40f, 25f);
         for (int i = 0; i < Math.Min(Shown, count); i++)
@@ -1035,7 +1039,7 @@ internal sealed partial class Panel
             Hit(parent, at, 16f, 42f, 42f, () => { avatar = target; template = 0; inSlots = false; });
         }
         if (padLayout)
-            Mark(parent, "RB", 1280f - 58f, 25f);
+            Mark(parent, "RB", Width - 58f, 25f);
     }
 
     private void TabLabel(RectTransform parent, string text, float x, Tab which)
@@ -1069,20 +1073,24 @@ internal sealed partial class Panel
         {
             Print(parent, current.Name, 296f, 90f, 420f, 28f, 22, Style.Text, TextAnchor.MiddleLeft);
             Print(parent, Current.Name, 300f + current.Name.Length * 13f, 96f, 200f, 18f, 13, Style.Dim, TextAnchor.MiddleLeft);
+            float slotWidth = 208f + wide / 3f;
             for (int i = 0; i < SlotOrder.Length; i++)
-                DrawSlot(parent, current, SlotOrder[i], 296f + (i % 3) * 218f, 128f + (i / 3) * 298f, i);
+                DrawSlot(parent, current, SlotOrder[i], 296f + (i % 3) * (slotWidth + 10f), 128f + (i / 3) * 298f, slotWidth, i);
             DrawCompare(parent, current);
         }
         else
         {
             float left = layer is Layer.Chooser or Layer.ChooserFilter ? 480f : 296f;
-            Print(parent, $"Create a template for {Current.Name}", left, 340f, 956f - left, 30f, 18, Style.Dim, TextAnchor.MiddleCenter);
+            Print(parent, $"Create a template for {Current.Name}", left, 340f, 956f + wide - left, 30f, 18, Style.Dim, TextAnchor.MiddleCenter);
         }
         if (layer is not (Layer.Chooser or Layer.ChooserFilter))
             DrawFooter(parent, inSlots ? "Change item" : "Open template");
     }
 
-    private const int PickerColumns = 7, PickerRows = 4;
+    private const int PickerRows = 4;
+
+    // Seven columns of 120 units on a 16:10 screen, and one more for each 120 units a wider screen adds.
+    private int PickerColumns => 7 + (int)(wide / 120f);
     private const float PromptWidth = 136f;
     private static readonly (string Key, string Label)[] WeaponAttributes =
     [
@@ -1139,9 +1147,9 @@ internal sealed partial class Panel
         return sets.Count > 0 ? string.Join(", ", sets) : items.Any() ? "No set bonus" : "Nothing chosen yet";
     }
 
-    private void DrawSlot(RectTransform parent, CharacterTemplate current, Slot slot, float x, float y, int index)
+    private void DrawSlot(RectTransform parent, CharacterTemplate current, Slot slot, float x, float y, float Width, int index)
     {
-        const float Width = 208f, Height = 288f;
+        const float Height = 288f;
         bool focus = inSlots && index == slotIndex;
         Box(parent, x, y, Width, Height, CardFill, Shapes.Card);
         if (focus)
@@ -1184,7 +1192,8 @@ internal sealed partial class Panel
     // The items' own stats, without set bonuses or the character's base stats.
     private void DrawCompare(RectTransform parent, CharacterTemplate current)
     {
-        const float X = 960f, Width = 296f;
+        float X = 960f + wide;
+        const float Width = 296f;
         Print(parent, "Gear stats compared with equipped gear", X, 90f, Width, 20f, 14, Style.Cream, TextAnchor.MiddleLeft);
         var after = new Dictionary<string, (float Value, bool Percent)>();
         var before = new Dictionary<string, (float Value, bool Percent)>();
@@ -1241,10 +1250,10 @@ internal sealed partial class Panel
         }
         Mark(parent, "Menu", 28f, 756f);
         Print(parent, "Rename or delete", 60f, 758f, 180f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
-        Mark(parent, "A", 1010f, 756f);
-        Print(parent, primary, 1040f, 758f, 120f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
-        Mark(parent, "B", 1170f, 756f);
-        Print(parent, "Close", 1200f, 758f, 60f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
+        Mark(parent, "A", 1010f + wide, 756f);
+        Print(parent, primary, 1040f + wide, 758f, 120f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
+        Mark(parent, "B", 1170f + wide, 756f);
+        Print(parent, "Close", 1200f + wide, 758f, 60f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
     }
 
     private void DrawTeams(RectTransform parent)
@@ -1252,9 +1261,9 @@ internal sealed partial class Panel
         TeamTemplate current = CurrentTeam;
         if (current == null)
         {
-            Print(parent, "No team templates yet", 0f, 320f, 1280f, 30f, 18, Style.Dim, TextAnchor.MiddleCenter);
+            Print(parent, "No team templates yet", 0f, 320f, Width, 30f, 18, Style.Dim, TextAnchor.MiddleCenter);
             Action save = SaveParty;
-            Button_(parent, "Save party's equipped gear as team", "Y", 470f, 370f, 340f, 42f, true, save);
+            Button_(parent, "Save party's equipped gear as team", "Y", 470f + wide / 2f, 370f, 340f, 42f, true, save);
             DrawFooter(parent, "");
             return;
         }
@@ -1267,13 +1276,13 @@ internal sealed partial class Panel
         Print(parent, $"Team template {team + 1} of {library.Teams.Count}", at + current.Name.Length * 12f + 50f, 94f, 300f, 22f, 13, Style.Dim, TextAnchor.MiddleLeft);
         Plan check = Planner.Plan(library.Templates(current), gear);
         for (int i = 0; i < current.Members.Count; i++)
-            DrawMember(parent, current.Members[i], 28f + i * 310f, i == member, check);
+            DrawMember(parent, current.Members[i], 28f + i * (310f + wide / 4f), 298f + wide / 4f, i == member, check);
         if (check.Clashes.Count > 0)
         {
             Clash clash = check.Clashes[0];
-            Box(parent, 28f, 666f, 1224f, 60f, Style.Hex(0xf0c26e, 0.14f), Shapes.Card);
-            Print(parent, $"{gear.NameOf(clash.First)} and {gear.NameOf(clash.Second)} both need {gear.View(clash.Item)?.Name ?? "one item"}", 44f, 676f, 1190f, 20f, 14, Warn, TextAnchor.MiddleLeft);
-            Print(parent, "Choose another template for one of them. The team cannot be applied until then.", 44f, 698f, 1190f, 18f, 12, Style.Dim, TextAnchor.MiddleLeft);
+            Box(parent, 28f, 666f, 1224f + wide, 60f, Style.Hex(0xf0c26e, 0.14f), Shapes.Card);
+            Print(parent, $"{gear.NameOf(clash.First)} and {gear.NameOf(clash.Second)} both need {gear.View(clash.Item)?.Name ?? "one item"}", 44f, 676f, 1190f + wide, 20f, 14, Warn, TextAnchor.MiddleLeft);
+            Print(parent, "Choose another template for one of them. The team cannot be applied until then.", 44f, 698f, 1190f + wide, 18f, 12, Style.Dim, TextAnchor.MiddleLeft);
         }
         Band(parent, 740f, 60f, Bar);
         Color applyInk = check.CanApply ? Style.Text : Style.Dim;
@@ -1283,26 +1292,26 @@ internal sealed partial class Panel
             Print(parent, "Save party's equipped gear as team", 60f, 758f, 280f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
             Mark(parent, "Menu", 340f, 756f);
             Print(parent, "Rename or delete", 372f, 758f, 170f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
-            Mark(parent, "UpDown", 790f, 756f);
-            Print(parent, "Change template", 820f, 758f, 150f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
-            Mark(parent, "X", 990f, 756f);
-            Print(parent, "Apply team", 1020f, 758f, 120f, 24f, 14, applyInk, TextAnchor.MiddleLeft);
-            Mark(parent, "B", 1170f, 756f);
-            Print(parent, "Close", 1200f, 758f, 60f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
+            Mark(parent, "UpDown", 790f + wide, 756f);
+            Print(parent, "Change template", 820f + wide, 758f, 150f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
+            Mark(parent, "X", 990f + wide, 756f);
+            Print(parent, "Apply team", 1020f + wide, 758f, 120f, 24f, 14, applyInk, TextAnchor.MiddleLeft);
+            Mark(parent, "B", 1170f + wide, 756f);
+            Print(parent, "Close", 1200f + wide, 758f, 60f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
         }
         else
         {
             Action save = SaveParty, menu = OpenMenu, apply = AskApply;
             Button_(parent, "Save party's equipped gear as team", "", 24f, 750f, 290f, 36f, false, save);
             Button_(parent, "Rename or delete", "", 324f, 750f, 180f, 36f, false, menu);
-            Button_(parent, "Apply team", "", 960f, 750f, 150f, 36f, true, apply);
+            Button_(parent, "Apply team", "", 960f + wide, 750f, 150f, 36f, true, apply);
             EscHint(parent, "Close");
         }
     }
 
-    private void DrawMember(RectTransform parent, TeamMember who, float x, bool focus, Plan check)
+    private void DrawMember(RectTransform parent, TeamMember who, float x, float Width, bool focus, Plan check)
     {
-        const float Width = 298f, Height = 516f, Top = 136f;
+        const float Height = 516f, Top = 136f;
         Box(parent, x, Top, Width, Height, CardFill, Shapes.Card);
         if (focus)
             Frame(parent, x, Top, Width, Height);
@@ -1318,7 +1327,7 @@ internal sealed partial class Panel
         for (int i = 0; i < SlotOrder.Length; i++)
         {
             ulong guid = chosen?.Items.GetValueOrDefault(SlotOrder[i]) ?? gear.Equipped(who.Avatar, SlotOrder[i]);
-            float cx = x + 14f + (i % 3) * 92f, cy = Top + 114f + (i / 3) * 92f;
+            float cx = x + (Width - 270f) / 2f + (i % 3) * 92f, cy = Top + 114f + (i / 3) * 92f;
             ItemView view = guid == 0 ? null : gear.View(guid);
             if (view != null)
                 Icon_(parent, view, cx, cy, 86f);
@@ -1344,14 +1353,15 @@ internal sealed partial class Panel
 
     private void DrawPicker(RectTransform parent)
     {
-        const int Columns = PickerColumns, Rows = PickerRows;
+        int Columns = PickerColumns;
+        const int Rows = PickerRows;
         const float CardWidth = 112f, CardHeight = 146f, Gap = 8f;
         Band(parent, 0f, 74f, Bar);
         Print(parent, Selected?.Name ?? "", 28f, 22f, 300f, 30f, 21, Style.Text, TextAnchor.MiddleLeft);
         Print(parent, $"{pickerSlot} for {Current.Name}", 340f, 26f, 400f, 24f, 16, Style.Cream, TextAnchor.MiddleLeft);
-        Fit(parent, PickerState(), 28f, 80f, 830f, 20f, 13, Style.Dim);
+        Fit(parent, PickerState(), 28f, 80f, 830f + wide, 20f, 13, Style.Dim);
         if (pickerItems.Count == 0)
-            Print(parent, "No items match", 28f, 340f, 830f, 24f, 16, Style.Dim, TextAnchor.MiddleCenter);
+            Print(parent, "No items match", 28f, 340f, 830f + wide, 24f, 16, Style.Dim, TextAnchor.MiddleCenter);
         int row = pickerCursor / Columns;
         int first = Math.Max(0, Math.Min(row - 1, (pickerItems.Count - 1) / Columns - Rows + 1)) * Columns;
         for (int i = first; i < pickerItems.Count && i < first + Columns * Rows; i++)
@@ -1364,7 +1374,8 @@ internal sealed partial class Panel
             int target = i;
             Hit(parent, x, y, CardWidth, CardHeight, () => { pickerCursor = target; Pick(); });
         }
-        const float Side = 878f, Width = 378f;
+        float Side = 878f + wide;
+        const float Width = 378f;
         if (pickerCursor < pickerItems.Count && gear.View(pickerItems[pickerCursor]) is { } shown)
         {
             Box(parent, Side, 90f, Width, 400f, CardFill, Shapes.Card);
@@ -1410,10 +1421,10 @@ internal sealed partial class Panel
             }
             Mark(parent, "X", x, 756f);
             Print(parent, freeText, x + 32f, 758f, 180f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
-            Mark(parent, "A", 1010f, 756f);
-            Print(parent, "Use in template", 1040f, 758f, 130f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
-            Mark(parent, "B", 1170f, 756f);
-            Print(parent, "Back", 1200f, 758f, 60f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
+            Mark(parent, "A", 1010f + wide, 756f);
+            Print(parent, "Use in template", 1040f + wide, 758f, 130f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
+            Mark(parent, "B", 1170f + wide, 756f);
+            Print(parent, "Back", 1200f + wide, 758f, 60f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
         }
         else
         {
@@ -1427,7 +1438,7 @@ internal sealed partial class Panel
                 x += 90f;
             }
             Button_(parent, freeText, "", x, 750f, 180f, 36f, false, free);
-            Button_(parent, "Use in template", "", 990f, 750f, 160f, 36f, true, pick);
+            Button_(parent, "Use in template", "", 990f + wide, 750f, 160f, 36f, true, pick);
             EscHint(parent, "Back");
         }
     }
@@ -1520,11 +1531,12 @@ internal sealed partial class Panel
     private void DrawSetFilter(RectTransform parent)
     {
         const int PerColumn = 14;
-        const float Left = 64f, Top = 86f, ColumnWidth = 411f, RowHeight = 45f;
+        const float Left = 64f, Top = 86f, RowHeight = 45f;
+        float ColumnWidth = 411f + wide / 2f;
         Cover(parent, Style.Hex(0x151c2a, 0.97f));
         Print(parent, "Artifact set filter", 64f, 24f, 500f, 24f, 17, Style.Cream, TextAnchor.MiddleLeft);
         Print(parent, "Artifacts that meet the requirements will be shown", 64f, 48f, 600f, 18f, 12, Style.Dim, TextAnchor.MiddleLeft);
-        Box(parent, 64f, 72f, 1152f, 1f, Style.Hex(0xd3bc8e, 0.3f), null);
+        Box(parent, 64f, 72f, 1152f + wide, 1f, Style.Hex(0xd3bc8e, 0.3f), null);
         int row = panelCursor / 2;
         int firstRow = Math.Max(0, Math.Min(row - PerColumn / 2, (setRows.Count + 1) / 2 - PerColumn));
         for (int i = firstRow * 2; i < setRows.Count && i < (firstRow + PerColumn) * 2; i++)
@@ -1552,7 +1564,8 @@ internal sealed partial class Panel
         if (panelCursor < setRows.Count)
         {
             var shown = setRows[panelCursor];
-            const float CardX = 920f, CardWidth = 296f;
+            float CardX = 920f + wide;
+            const float CardWidth = 296f;
             Box(parent, CardX, Top, CardWidth, 636f, Paper, null);
             Box(parent, CardX, Top, CardWidth, 38f, Style.Hex(0xa35d2c), null);
             Fit(parent, shown.Name, CardX + 14f, Top + 6f, CardWidth - 28f, 26f, 15, Style.White);
@@ -1579,18 +1592,18 @@ internal sealed partial class Panel
         {
             Mark(parent, "L3", 28f, 756f);
             Print(parent, "Reset", 58f, 758f, 80f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
-            Mark(parent, "X", 890f, 756f);
-            Print(parent, "Confirm filter", 920f, 758f, 120f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
-            Mark(parent, "A", 1060f, 756f);
-            Print(parent, "Select", 1090f, 758f, 70f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
-            Mark(parent, "B", 1170f, 756f);
-            Print(parent, "Leave", 1200f, 758f, 60f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
+            Mark(parent, "X", 890f + wide, 756f);
+            Print(parent, "Confirm filter", 920f + wide, 758f, 120f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
+            Mark(parent, "A", 1060f + wide, 756f);
+            Print(parent, "Select", 1090f + wide, 758f, 70f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
+            Mark(parent, "B", 1170f + wide, 756f);
+            Print(parent, "Leave", 1200f + wide, 758f, 60f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
         }
         else
         {
             Action confirm = ClosePanel;
             Button_(parent, "Reset", "", 24f, 750f, 100f, 36f, false, () => { artifactQuery.Sets.Clear(); FillPicker(); });
-            Button_(parent, "Confirm filter", "", 960f, 750f, 150f, 36f, true, confirm);
+            Button_(parent, "Confirm filter", "", 960f + wide, 750f, 150f, 36f, true, confirm);
             EscHint(parent, "Leave");
         }
     }
@@ -1600,7 +1613,8 @@ internal sealed partial class Panel
         Cover(parent, Style.Hex(0x060a14, 0.6f));
         int lines = Math.Min(plan.Moves.Count, 8);
         float height = 150f + lines * 38f + (plan.Missing.Count > 0 ? 22f : 0f);
-        const float X = 290f, Width = 700f;
+        float X = 290f + wide / 2f;
+        const float Width = 700f;
         float y = (800f - height) / 2f;
         Box(parent, X, y, Width, height, Paper, Shapes.Card);
         Print(parent, planTitle, X + 28f, y + 20f, Width - 56f, 28f, 20, PaperInk, TextAnchor.MiddleLeft);
@@ -1631,7 +1645,8 @@ internal sealed partial class Panel
     private void DrawMenu(RectTransform parent)
     {
         Cover(parent, Style.Hex(0x060a14, 0.6f));
-        const float X = 490f, Y = 310f;
+        float X = 490f + wide / 2f;
+        const float Y = 310f;
         Box(parent, X, Y, 300f, 180f, Paper, Shapes.Card);
         Print(parent, tab == Tab.Characters ? Selected?.Name ?? "" : CurrentTeam?.Name ?? "", X + 20f, Y + 16f, 260f, 24f, 16, PaperInk, TextAnchor.MiddleCenter);
         Action rename_ = StartRename, delete = DeleteSelected;
@@ -1642,7 +1657,8 @@ internal sealed partial class Panel
     private void DrawRename(RectTransform parent)
     {
         Cover(parent, Style.Hex(0x060a14, 0.6f));
-        const float X = 390f, Y = 330f;
+        float X = 390f + wide / 2f;
+        const float Y = 330f;
         Box(parent, X, Y, 500f, 140f, Paper, Shapes.Card);
         Print(parent, "Type a name", X + 24f, Y + 16f, 450f, 20f, 15, PaperInk, TextAnchor.MiddleLeft);
         Print(parent, rename + "_", X + 24f, Y + 48f, 450f, 28f, 18, PaperInk, TextAnchor.MiddleLeft);
@@ -1652,9 +1668,9 @@ internal sealed partial class Panel
     private void DrawToast(RectTransform parent)
     {
         float width = Math.Max(toast.Length, toastDetail.Length) * 8f + 60f;
-        Box(parent, (1280f - width) / 2f, 668f, width, 58f, Style.Hex(0x141b2a, 0.96f), Shapes.Card);
-        Print(parent, toast, 0f, 676f, 1280f, 22f, 14, Style.Text, TextAnchor.MiddleCenter);
-        Print(parent, toastDetail, 0f, 698f, 1280f, 18f, 12, Style.Dim, TextAnchor.MiddleCenter);
+        Box(parent, (Width - width) / 2f, 668f, width, 58f, Style.Hex(0x141b2a, 0.96f), Shapes.Card);
+        Print(parent, toast, 0f, 676f, Width, 22f, 14, Style.Text, TextAnchor.MiddleCenter);
+        Print(parent, toastDetail, 0f, 698f, Width, 18f, 12, Style.Dim, TextAnchor.MiddleCenter);
     }
 
     // Parts
@@ -1710,10 +1726,10 @@ internal sealed partial class Panel
     private void EscHint(Transform parent, string action)
     {
         Image cap = Picture(parent, "Key", Shapes.Key, Style.White);
-        TopLeft(cap.rectTransform, 1170f, 758f, 36f, Style.KeyHeight);
+        TopLeft(cap.rectTransform, 1170f + wide, 758f, 36f, Style.KeyHeight);
         Text letter = ui.Label(cap.rectTransform, "Text", "Esc", Style.KeySize, Style.BumperInk, TextAnchor.MiddleCenter);
         Fill(letter.rectTransform);
-        Print(parent, action, 1212f, 758f, 60f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
+        Print(parent, action, 1212f + wide, 758f, 60f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
     }
 
     private sealed record MarkLook(Shape Shape, string Text = null, Color Ink = default, int Size = 0);

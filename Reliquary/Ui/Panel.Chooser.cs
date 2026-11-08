@@ -206,10 +206,10 @@ internal sealed partial class Panel
         DrawRosterControls(parent);
         if (padLayout)
         {
-            Mark(parent, "A", 1010f, 756f);
-            Print(parent, "Open", 1040f, 758f, 120f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
-            Mark(parent, "B", 1170f, 756f);
-            Print(parent, "Leave", 1200f, 758f, 60f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
+            Mark(parent, "A", 1010f + wide, 756f);
+            Print(parent, "Open", 1040f + wide, 758f, 120f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
+            Mark(parent, "B", 1170f + wide, 756f);
+            Print(parent, "Leave", 1200f + wide, 758f, 60f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
         }
         else
             EscHint(parent, "Leave");
