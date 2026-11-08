@@ -1,6 +1,6 @@
 namespace Reliquary;
 
-// Character ID to icon name, generated from the 7.2 AvatarExcelConfigData. A newer character tries their display name,
+// Character ID to icon name, generated from the 7.2 client's own AvatarExcelConfigData. A newer character tries their display name,
 // which is the icon name for many of them, and shows initials if the game has no such icon.
 internal static class AvatarIcons
 {
@@ -126,6 +126,15 @@ internal static class AvatarIcons
         [10000130] = "Linnea",
         [10000131] = "Nicole",
         [10000132] = "Prune",
+        [10000133] = "MarionetteNew",
+        [10000134] = "PlayerBoy",
+        [10000135] = "PlayerGirl",
+        [10000136] = "Mitya",
+        [10000137] = "Valeriy",
+        [10000140] = "Vodyanitsa",
+        [10000143] = "Vesna",
+        [10000148] = "Alyosha",
+        [10000150] = "Odette",
         [10000901] = "Mavuika",
         [10000902] = "Hutao",
         [10000903] = "Ineffa",
@@ -143,7 +152,7 @@ internal static class AvatarIcons
         10000061, 10000064, 10000065, 10000067, 10000068, 10000072, 10000074, 10000076,
         10000077, 10000080, 10000081, 10000083, 10000085, 10000088, 10000090, 10000092,
         10000097, 10000100, 10000105, 10000108, 10000110, 10000113, 10000115, 10000121,
-        10000124, 10000127, 10000132,
+        10000124, 10000127, 10000132, 10000137, 10000148,
     ];
 
     public static int Rarity(uint id) => FourStars.Contains(id) ? 4 : 5;
