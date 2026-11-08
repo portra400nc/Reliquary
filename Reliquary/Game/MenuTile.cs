@@ -1,3 +1,4 @@
+using Il2CppInterop.Runtime;
 using MoleMole;
 using UnityEngine;
 using UnityEngine.UI;
@@ -8,22 +9,58 @@ namespace Reliquary;
 // game's controller navigation is fixed when the menu opens and never reaches it. A controller opens Reliquary with Y.
 internal sealed class MenuTile(Steps steps, Action<string> log)
 {
-    private const string PagePath = "/Canvas/Pages/PlayerProfilePage";
+    private const string PagesPath = "/Canvas/Pages", PageName = "PlayerProfilePage";
     private const string Name = "Reliquary";
-    private float nextLook;
+    private float nextLook, nextPagesLook;
+    private Transform pages;
     private GameObject page;
-    private Transform tile;
+    private Transform tile, quit, exit;
 
     public bool Open => page && page.activeInHierarchy;
 
+    // GameObject.Find searches the whole scene, about 5 ms on the Deck, and finds only active objects. So the pages'
+    // parent is found once, and the menu page under it by name, which finds it while it is hidden too.
     public void Update(float now, Sprite icon)
     {
         if (now < nextLook)
             return;
         nextLook = now + 0.2f;
-        page = GameObject.Find(PagePath);
+        if (!page)
+        {
+            if (!pages && now >= nextPagesLook)
+            {
+                nextPagesLook = now + 1f;
+                pages = GameObject.Find(PagesPath)?.transform;
+            }
+            page = pages ? pages.Find(PageName)?.gameObject : null;
+        }
         if (Open)
             steps.Run("add the Paimon menu tile", () => Ensure(icon));
+    }
+
+    // The first descendant whose name starts with prefix. A walk of the page instead of GetComponentsInChildren<Button>,
+    // whose first call took 3.5 s on the Deck and froze the first opening of the menu.
+    private static Transform Descendant(Transform parent, string prefix)
+    {
+        for (int i = 0; i < parent.childCount; i++)
+        {
+            Transform child = parent.GetChild(i);
+            if (child.name.StartsWith(prefix, StringComparison.Ordinal))
+                return child;
+            if (Descendant(child, prefix) is { } found)
+                return found;
+        }
+        return null;
+    }
+
+    private static Button ButtonUnder(Transform node)
+    {
+        if (node.GetComponent(Il2CppType.Of<Button>()) is { } own)
+            return own.TryCast<Button>();
+        for (int i = 0; i < node.childCount; i++)
+            if (ButtonUnder(node.GetChild(i)) is { } found)
+                return found;
+        return null;
     }
 
     public bool Clicked()
@@ -35,35 +72,28 @@ internal sealed class MenuTile(Steps steps, Action<string> log)
         return RectTransformUtility.RectangleContainsScreenPoint(tile.TryCast<RectTransform>(), new Vector2(Input.mousePosition.x, Input.mousePosition.y), camera);
     }
 
-    // The screen point at the middle of the left edge of the game's Quit Game button.
-    public Vector2? QuitEdge()
+    // The game's Quit Game button, found once by name.
+    public RectTransform Quit
     {
-        if (!Open)
-            return null;
-        foreach (Button button in page.GetComponentsInChildren<Button>())
-            for (Transform node = button.transform; node && node != page.transform; node = node.parent)
-                if (node.name.StartsWith("BtnLogout", StringComparison.Ordinal) && node.gameObject.activeInHierarchy && node.TryCast<RectTransform>() is { } rect)
-                {
-                    Canvas canvas = rect.GetComponentInParent<Canvas>();
-                    Camera camera = canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay ? canvas.worldCamera : null;
-                    Rect box = rect.rect;
-                    Vector3 left = rect.TransformPoint(new Vector3(box.xMin, box.center.y, 0f));
-                    return RectTransformUtility.WorldToScreenPoint(camera, left);
-                }
-        return null;
+        get
+        {
+            if (!Open)
+                return null;
+            if (!quit)
+                quit = Descendant(page.transform, "BtnLogout");
+            return quit ? quit.TryCast<RectTransform>() : null;
+        }
     }
 
     // Leaves the menu the way its own Leave button does.
     public void Leave()
     {
-        foreach (Button button in page.GetComponentsInChildren<Button>())
+        if (page && !exit)
+            exit = Descendant(page.transform, "BtnExit");
+        if (exit && ButtonUnder(exit) is { } button && button.gameObject.activeInHierarchy)
         {
-            for (Transform node = button.transform; node && node != page.transform; node = node.parent)
-                if (node.name.StartsWith("BtnExit", StringComparison.Ordinal) && button.gameObject.activeInHierarchy)
-                {
-                    button.onClick.Invoke();
-                    return;
-                }
+            button.onClick.Invoke();
+            return;
         }
         log("the Paimon menu has no Leave button to press");
     }

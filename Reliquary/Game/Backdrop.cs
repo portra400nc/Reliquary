@@ -39,6 +39,23 @@ internal sealed class Backdrop(Steps steps, Action<string> log)
         steps.Run("blur the game behind the panel", Attach);
     }
 
+    public bool Warmed { get; private set; }
+
+    // Runs the frame copy's calls once, attaching and removing the command buffer, as soon as the world has a camera.
+    // Their first calls cost about 1.5 s on the Deck, which then falls in the loading screen instead of on the first
+    // opening of the panel.
+    public void Warm(float now)
+    {
+        if (Warmed || buffer != null || now < nextLook)
+            return;
+        nextLook = now + LookInterval;
+        if (!GameObject.Find(MainCameraPath))
+            return;
+        steps.Run("warm up the backdrop", Attach);
+        Release();
+        Warmed = true;
+    }
+
     public void Release()
     {
         if (buffer != null)
@@ -106,7 +123,8 @@ internal sealed class Backdrop(Steps steps, Action<string> log)
         buffer.CopyTexture(encoded, 0, 0, shown, 0, 0);
         camera.AddCommandBuffer(When, buffer);
         attachedFrame = Time.frameCount;
-        log($"backdrop: blurring the main camera's frame, {width}x{height}");
+        if (Warmed)
+            log($"backdrop: blurring the main camera's frame, {width}x{height}");
     }
 
     // The blur steps have no alpha channel, so the encoded picture comes out opaque.

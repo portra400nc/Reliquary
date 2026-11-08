@@ -37,7 +37,8 @@ internal sealed unsafe class GameIcons(Steps steps, Action<string> log)
     public Texture Small(string name, int target = SmallSize)
     {
         string key = $"{name}@{target}";
-        if (smalls.TryGetValue(key, out RenderTexture small))
+        // Kept across openings of the panel; one the GPU dropped is made again.
+        if (smalls.TryGetValue(key, out RenderTexture small) && (small == null || small.IsCreated()))
             return small;
         Sprite sprite = Get(name);
         if (sprite == null)
@@ -80,14 +81,8 @@ internal sealed unsafe class GameIcons(Steps steps, Action<string> log)
         return elements[element];
     }
 
-    public void ReleaseSmall()
-    {
-        foreach (RenderTexture small in smalls.Values)
-            if (small != null)
-                small.Release();
-        smalls.Clear();
-        elements.Clear();
-    }
+    // The element icons are the game's own sprites, which a scene change can unload, so they are found again each time.
+    public void ForgetElements() => elements.Clear();
 
     // The wrapper declares the handle by value, but the game method takes `ref uint`.
     private static Sprite Load(string path)

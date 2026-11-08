@@ -41,7 +41,7 @@ internal sealed partial class Panel
 
     private Library library = new();
     private string file = "";
-    private GameObject root, content, promptRoot;
+    private GameObject root, content;
     private Widgets ui;
     private Font font;
     private float nextFontLook;
@@ -116,6 +116,9 @@ internal sealed partial class Panel
             }
             if (!open)
             {
+                backdrop.Warm(now);
+                if (backdrop.Warmed && !stripLoaded)
+                    PreloadStrip();
                 DrawPrompt();
                 if (tile.Open && (Pad.Pressed(PadButtons.Y) || tile.Clicked()))
                     Open();
@@ -162,11 +165,12 @@ internal sealed partial class Panel
     {
         gear.Refresh();
         if (gear.Characters.Count == 0)
+        {
+            log("open: the game lists no characters yet");
             return;
+        }
         LoadLibrary(gear.Characters[0].Guid);
-        icons.ReleaseSmall();
         tile.Leave();
-        DestroyPrompt();
         ulong active = gear.Active();
         avatar = Math.Max(0, gear.Characters.ToList().FindIndex(character => character.Guid == active));
         template = slotIndex = member = 0;
@@ -179,6 +183,26 @@ internal sealed partial class Panel
         glidesBefore = [];
         Pad.Settle();
         steps.Run("switch player input", () => ActorUtils.EnablePlayerInput(false, false));
+    }
+
+    // The nine portraits the strip shows first take about 50 ms each to load, so they load once, right after the
+    // backdrop's warm-up, while the world's loading screen is still up. They stay cached for every later opening.
+    private bool stripLoaded;
+
+    private void PreloadStrip()
+    {
+        stripLoaded = true;
+        steps.Run("load the strip's portraits", () =>
+        {
+            gear.Refresh();
+            int count = gear.Characters.Count;
+            ulong active = gear.Active();
+            int at = Math.Max(0, gear.Characters.ToList().FindIndex(character => character.Guid == active));
+            int start = count <= 9 ? 0 : Math.Clamp(at - 4, 0, count - 9);
+            for (int i = start; i < Math.Min(count, start + 9); i++)
+                if (icons.Small(gear.Characters[i].Icon + "_Circle") == null)
+                    icons.Small(gear.Characters[i].Icon);
+        });
     }
 
     // The game locks the cursor once its menu closes, so with a mouse the panel frees it, every frame in case the game locks it again.
@@ -224,6 +248,7 @@ internal sealed partial class Panel
             Object.Destroy(root);
         root = content = null;
         backdrop.Release();
+        icons.ForgetElements();
         Pad.Settle();
         steps.Run("switch player input", () => ActorUtils.EnablePlayerInput(true, false));
     }
@@ -949,29 +974,30 @@ internal sealed partial class Panel
         return made;
     }
 
+    // The "Y Reliquary" hint left of the game's Quit Game button. It lives inside the game's menu, anchored to that
+    // button, so it follows the menu's layout and fades with it. Placing it on a canvas of its own needed the button's
+    // screen point, and the first GetComponentInParent<Canvas> and RectTransformUtility.WorldToScreenPoint calls froze
+    // the first opening of the menu for about 2 s on the Deck.
     private void DrawPrompt()
     {
-        if (!tile.Open || !padLayout)
-        {
-            DestroyPrompt();
+        if (!tile.Open)
             return;
-        }
-        if (!promptRoot)
+        if (!promptBox)
         {
-            if (!font && !FindFont())
+            if (tile.Quit is not { } quit || (!font && !FindFont()))
                 return;
-            promptRoot = NewCanvas("ReliquaryPrompt");
-            ui = new Widgets(font);
-            promptBox = Node("Prompt", promptRoot.transform);
+            ui ??= new Widgets(font);
+            float scale = quit.rect.height / HintHeight;
+            promptBox = Node("ReliquaryPrompt", quit);
+            // The button lays out its children; this one keeps the place it is given.
+            promptBox.gameObject.AddComponent<LayoutElement>().ignoreLayout = true;
+            Place(promptBox, V(0f, 0.5f), V(0f, 0.5f), V(1f, 0.5f), V(0f, 0f), V(PromptWidth, HintHeight));
+            promptBox.localScale = new Vector3 { x = scale, y = scale, z = 1f };
             Mark(promptBox, "Y", 0f, 4f);
             Print(promptBox, "Reliquary", 30f, 4f, 110f, 24f, 15, Style.BackInk, TextAnchor.MiddleLeft);
         }
-        // Left of the game's Quit Game button, wherever the screen's shape puts it.
-        float scale = Math.Min(Screen.width / Style.ReferenceWidth, Screen.height / Style.ReferenceHeight);
-        if (tile.QuitEdge() is { } edge)
-            TopLeft(promptBox, edge.x / scale - PromptWidth, (Screen.height - edge.y) / scale - 16f, PromptWidth, 32f);
-        else
-            TopLeft(promptBox, 110f, 736f, PromptWidth, 32f);
+        if (promptBox.gameObject.activeSelf != padLayout)
+            promptBox.gameObject.SetActive(padLayout);
     }
 
     private bool FindFont()
@@ -980,14 +1006,6 @@ internal sealed partial class Panel
             if (item.name == Style.GameFont)
                 font = item.TryCast<Font>();
         return font;
-    }
-
-    private void DestroyPrompt()
-    {
-        if (promptRoot)
-            Object.Destroy(promptRoot);
-        promptRoot = null;
-        promptBox = null;
     }
 
     private void Build()
@@ -1234,7 +1252,7 @@ internal sealed partial class Panel
 
     // Seven columns of 120 units on a 16:10 screen, and one more for each 120 units a wider screen adds.
     private int PickerColumns => 7 + (int)(wide / 120f);
-    private const float PromptWidth = 136f;
+    private const float PromptWidth = 136f, HintHeight = 32f;
     private static readonly (string Key, string Label)[] WeaponAttributes =
     [
         ("CRIT Rate", "CRIT Rate"), ("CRIT DMG", "CRIT DMG"), ("ATK%", "ATK Percentage"), ("DEF%", "DEF Percentage"), ("HP%", "HP Percentage"),
