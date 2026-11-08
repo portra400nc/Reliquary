@@ -47,6 +47,7 @@ internal sealed partial class Panel
     private Tab tab;
     private Layer layer;
     private int avatar, template, slotIndex, team, member, menuIndex;
+    private bool inMembers;
     private bool inSlots;
     private Slot pickerSlot;
     private int pickerCursor;
@@ -230,7 +231,15 @@ internal sealed partial class Panel
                 if (Pressed(PadButtons.LT, KeyCode.Q) || Pressed(PadButtons.RT, KeyCode.E))
                     SwitchTab(tab == Tab.Characters ? Tab.Teams : Tab.Characters);
                 if (Pressed(PadButtons.B, KeyCode.Escape))
-                    Close();
+                {
+                    if (tab == Tab.Teams && inMembers)
+                    {
+                        inMembers = false;
+                        dirty = true;
+                    }
+                    else
+                        Close();
+                }
                 break;
             case Layer.Picker: PickerInput(now); break;
             case Layer.WeaponFilter: WeaponFilterInput(now); break;
@@ -308,19 +317,33 @@ internal sealed partial class Panel
             Create();
     }
 
+    // Up and down choose a team; A goes into its members, where left and right choose a member and up and down change
+    // that member's template.
     private void TeamsInput(float now)
     {
-        if (Pressed(PadButtons.LB, KeyCode.PageUp))
+        if (!inMembers && Repeat(PadButtons.DpadUp, KeyCode.UpArrow, now))
             MoveTeam(-1);
-        else if (Pressed(PadButtons.RB, KeyCode.PageDown))
+        else if (!inMembers && Repeat(PadButtons.DpadDown, KeyCode.DownArrow, now))
             MoveTeam(1);
-        else if (Repeat(PadButtons.DpadLeft, KeyCode.LeftArrow, now))
-            MoveMember(-1);
-        else if (Repeat(PadButtons.DpadRight, KeyCode.RightArrow, now))
+        else if (!inMembers && (Pressed(PadButtons.A, KeyCode.Return) || Repeat(PadButtons.DpadRight, KeyCode.RightArrow, now)))
+        {
+            if (CurrentTeam != null)
+                inMembers = true;
+            dirty = true;
+        }
+        else if (inMembers && Repeat(PadButtons.DpadLeft, KeyCode.LeftArrow, now))
+        {
+            if (member == 0)
+                inMembers = false;
+            else
+                MoveMember(-1);
+            dirty = true;
+        }
+        else if (inMembers && Repeat(PadButtons.DpadRight, KeyCode.RightArrow, now))
             MoveMember(1);
-        else if (Repeat(PadButtons.DpadUp, KeyCode.UpArrow, now))
+        else if (inMembers && Repeat(PadButtons.DpadUp, KeyCode.UpArrow, now))
             ChangeMemberTemplate(-1);
-        else if (Repeat(PadButtons.DpadDown, KeyCode.DownArrow, now))
+        else if (inMembers && Repeat(PadButtons.DpadDown, KeyCode.DownArrow, now))
             ChangeMemberTemplate(1);
         else if (Pressed(PadButtons.X, KeyCode.F))
             AskApply();
@@ -501,6 +524,7 @@ internal sealed partial class Panel
             int deployed = library.Teams.FindIndex(candidate => candidate.Members.Select(m => m.Avatar).OrderBy(g => g).SequenceEqual(gear.Party.OrderBy(g => g)));
             team = deployed >= 0 ? deployed : Math.Clamp(team, 0, Math.Max(0, library.Teams.Count - 1));
             member = 0;
+            inMembers = false;
         }
         dirty = true;
     }
@@ -1011,49 +1035,72 @@ internal sealed partial class Panel
 
     private void Cover(Transform parent, Color color) => Band(parent, 0f, Style.ReferenceHeight, color);
 
+    // One row in three zones over the columns below: the title over the sidebar, the tabs from the content's left edge,
+    // and on the Characters tab the character strip ending at the stats column's right edge, with All characters as a
+    // tile at its end.
+    private const float ContentLeft = 296f, FaceStep = 50f, FaceSize = 42f, TileSize = 42f;
+
     private void DrawTop(RectTransform parent)
     {
         Band(parent, 0f, 74f, Bar);
         Image sigil = Picture(parent, "Sigil", Shapes.Sigil, Style.Cream);
         TopLeft(sigil.rectTransform, 28f, 22f, 30f, 30f);
         Print(parent, "Reliquary", 68f, 22f, 200f, 30f, 21, Style.Text, TextAnchor.MiddleLeft);
-        float x = 290f;
         if (padLayout)
-            Mark(parent, "LT", x, 25f);
-        TabLabel(parent, "Characters", x + 38f, Tab.Characters);
-        TabLabel(parent, "Teams", x + 150f, Tab.Teams);
+            Mark(parent, "LT", ContentLeft, 25f);
+        float x = ContentLeft + 38f;
+        x += TabLabel(parent, "Characters", x, Tab.Characters) + 28f;
+        x += TabLabel(parent, "Teams", x, Tab.Teams) + 14f;
         if (padLayout)
-            Mark(parent, "RT", x + 228f, 25f);
-        if (tab != Tab.Characters)
-            return;
-        Action chooser = OpenChooser;
-        Button_(parent, "All characters", "L3", 560f, 20f, 150f, 34f, false, chooser);
+            Mark(parent, "RT", x, 25f);
+        if (tab == Tab.Characters)
+            DrawStrip(parent);
+    }
+
+    private void DrawStrip(RectTransform parent)
+    {
         const int Shown = 9;
-        int count = gear.Characters.Count;
-        float faces = Width - 28f - (Shown * 50f) - (padLayout ? 40f : 0f);
+        float right = Width - 24f, tileX = right - TileSize, divider = tileX - 15f, rb = divider - 14f - 30f;
+        Action chooser = OpenChooser;
+        Box(parent, tileX, 16f, TileSize, TileSize, Style.Band, Shapes.Card);
+        Image grid = Picture(parent, "Grid", Shapes.Grid, Style.Text);
+        TopLeft(grid.rectTransform, tileX + 11f, 27f, 20f, 20f);
         if (padLayout)
-            Mark(parent, "LB", faces - 40f, 25f);
+        {
+            Image badge = Picture(parent, "L3", Shapes.Face, Style.White);
+            TopLeft(badge.rectTransform, tileX + TileSize - 13f, 16f + TileSize - 13f, 20f, 20f);
+            Fill(ui.Label(badge.rectTransform, "Text", "L3", 8, Style.White, TextAnchor.MiddleCenter).rectTransform);
+        }
+        Hit(parent, tileX, 16f, TileSize, TileSize, chooser);
+        Box(parent, divider, 22f, 1f, 30f, Hair, null);
+        if (padLayout)
+            Mark(parent, "RB", rb, 25f);
+        int count = gear.Characters.Count;
+        float last = rb - 10f - FaceSize, first = last - (Shown - 1) * FaceStep;
         for (int i = 0; i < Math.Min(Shown, count); i++)
         {
             int index = (avatar + i - Math.Min(Shown / 2, avatar) + count) % count;
             if (avatar >= count - Shown / 2 && count > Shown)
                 index = count - Shown + i;
             Character who = gear.Characters[index];
-            float at = faces + i * 50f;
-            Face(parent, who, at, 16f, 42f, index == avatar);
+            float at = first + i * FaceStep;
+            Face(parent, who, at, 16f, FaceSize, index == avatar);
             int target = index;
-            Hit(parent, at, 16f, 42f, 42f, () => { avatar = target; template = 0; inSlots = false; });
+            Hit(parent, at, 16f, FaceSize, FaceSize, () => { avatar = target; template = 0; inSlots = false; });
         }
         if (padLayout)
-            Mark(parent, "RB", Width - 58f, 25f);
+            Mark(parent, "LB", first - 10f - 30f, 25f);
     }
 
-    private void TabLabel(RectTransform parent, string text, float x, Tab which)
+    // Returns the label's width, which the underline spans.
+    private float TabLabel(RectTransform parent, string text, float x, Tab which)
     {
-        Print(parent, text, x, 22f, 100f, 30f, 16, which == tab ? Style.Text : Style.Dim, TextAnchor.MiddleLeft);
+        Text label = Print(parent, text, x, 22f, 160f, 30f, 16, which == tab ? Style.Text : Style.Dim, TextAnchor.MiddleLeft);
+        float width = label.preferredWidth > 0f ? label.preferredWidth : text.Length * 11f;
         if (which == tab)
-            Box(parent, x, 56f, text.Length * 8.5f, 3f, Style.Cream, null);
-        Hit(parent, x, 16f, 100f, 42f, () => SwitchTab(which));
+            Box(parent, x, 56f, width, 3f, Style.Cream, null);
+        Hit(parent, x, 16f, width, 42f, () => SwitchTab(which));
+        return width;
     }
 
     private void DrawCharacters(RectTransform parent)
@@ -1253,7 +1300,7 @@ internal sealed partial class Panel
         {
             EscHint(parent, "Close");
             Action menu = OpenMenu;
-            Button_(parent, "Rename or delete", "", 24f, 750f, 180f, 36f, false, menu);
+            Button_(parent, "Rename or delete", "", 14f, 750f, 180f, 36f, false, menu);
             return;
         }
         Mark(parent, "Menu", 28f, 756f);
@@ -1264,89 +1311,128 @@ internal sealed partial class Panel
         Print(parent, "Close", 1200f + wide, 758f, 60f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
     }
 
+    // The team templates in the sidebar like the character templates, and the chosen team's members beside it.
+    private const int TeamRowsShown = 9;
+    private const float TeamRowHeight = 64f, MemberTop = 128f, MemberHeight = 516f, MemberGap = 12f;
+
     private void DrawTeams(RectTransform parent)
     {
+        LeftBand(parent, 74f, 276f, 666f, Bar);
+        int count = library.Teams.Count;
+        int first = Math.Max(0, Math.Min(team - TeamRowsShown + 1, count - TeamRowsShown));
+        for (int i = Math.Max(0, first); i < count && i < first + TeamRowsShown; i++)
+            DrawTeamRow(parent, library.Teams[i], i, 80f + (i - first) * TeamRowHeight);
+        if (count == 0)
+            Print(parent, "No team templates yet", 28f, 96f, 230f, 20f, 13, Style.Dim, TextAnchor.MiddleLeft);
+        Action save = SaveParty;
+        Button_(parent, "Save party as team", "Y", 14f, 688f, 248f, 40f, true, save);
         TeamTemplate current = CurrentTeam;
-        if (current == null)
+        Plan check = current == null ? null : Planner.Plan(library.Templates(current), gear);
+        if (current != null)
         {
-            Print(parent, "No team templates yet", 0f, 320f, Width, 30f, 18, Style.Dim, TextAnchor.MiddleCenter);
-            Action save = SaveParty;
-            Button_(parent, "Save party's equipped gear as team", "Y", 470f + wide / 2f, 370f, 340f, 42f, true, save);
-            DrawFooter(parent, "");
-            return;
+            Print(parent, current.Name, ContentLeft, 90f, 600f, 28f, 22, Style.Text, TextAnchor.MiddleLeft);
+            float width = (Width - 24f - ContentLeft - 3f * MemberGap) / 4f;
+            for (int i = 0; i < current.Members.Count; i++)
+            {
+                float x = ContentLeft + i * (width + MemberGap);
+                DrawMember(parent, current.Members[i], x, width, inMembers && i == member, check);
+                int target = i;
+                Hit(parent, x, MemberTop, width, MemberHeight, () => { member = target; inMembers = true; });
+            }
+            if (check.Clashes.Count > 0)
+            {
+                Clash clash = check.Clashes[0];
+                float boxWidth = Width - 24f - ContentLeft;
+                Box(parent, ContentLeft, 666f, boxWidth, 60f, Style.Hex(0xf0c26e, 0.14f), Shapes.Card);
+                Print(parent, $"{gear.NameOf(clash.First)} and {gear.NameOf(clash.Second)} both need {gear.View(clash.Item)?.Name ?? "one item"}", ContentLeft + 16f, 676f, boxWidth - 32f, 20f, 14, Warn, TextAnchor.MiddleLeft);
+                Print(parent, "Choose another template for one of them. The team cannot be applied until then.", ContentLeft + 16f, 698f, boxWidth - 32f, 18f, 12, Style.Dim, TextAnchor.MiddleLeft);
+            }
         }
-        if (padLayout)
-            Mark(parent, "LB", 28f, 94f);
-        float at = padLayout ? 68f : 28f;
-        Print(parent, current.Name, at, 90f, 300f, 30f, 21, Style.Text, TextAnchor.MiddleLeft);
-        if (padLayout)
-            Mark(parent, "RB", at + current.Name.Length * 12f + 10f, 94f);
-        Print(parent, $"Team template {team + 1} of {library.Teams.Count}", at + current.Name.Length * 12f + 50f, 94f, 300f, 22f, 13, Style.Dim, TextAnchor.MiddleLeft);
-        Plan check = Planner.Plan(library.Templates(current), gear);
-        for (int i = 0; i < current.Members.Count; i++)
-            DrawMember(parent, current.Members[i], 28f + i * (310f + wide / 4f), 298f + wide / 4f, i == member, check);
-        if (check.Clashes.Count > 0)
-        {
-            Clash clash = check.Clashes[0];
-            Box(parent, 28f, 666f, 1224f + wide, 60f, Style.Hex(0xf0c26e, 0.14f), Shapes.Card);
-            Print(parent, $"{gear.NameOf(clash.First)} and {gear.NameOf(clash.Second)} both need {gear.View(clash.Item)?.Name ?? "one item"}", 44f, 676f, 1190f + wide, 20f, 14, Warn, TextAnchor.MiddleLeft);
-            Print(parent, "Choose another template for one of them. The team cannot be applied until then.", 44f, 698f, 1190f + wide, 18f, 12, Style.Dim, TextAnchor.MiddleLeft);
-        }
+        else
+            Print(parent, "Save your party's equipped gear as a team to start", ContentLeft, 340f, Width - 24f - ContentLeft, 30f, 18, Style.Dim, TextAnchor.MiddleCenter);
         Band(parent, 740f, 60f, Bar);
         if (Prompting)
             return;
-        Color applyInk = check.CanApply ? Style.Text : Style.Dim;
+        Color applyInk = check is { CanApply: true } ? Style.Text : Style.Dim;
         if (padLayout)
         {
-            Mark(parent, "Y", 28f, 756f);
-            Print(parent, "Save party's equipped gear as team", 60f, 758f, 280f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
-            Mark(parent, "Menu", 340f, 756f);
-            Print(parent, "Rename or delete", 372f, 758f, 170f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
-            Mark(parent, "UpDown", 790f + wide, 756f);
-            Print(parent, "Change template", 820f + wide, 758f, 150f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
-            Mark(parent, "X", 990f + wide, 756f);
-            Print(parent, "Apply team", 1020f + wide, 758f, 120f, 24f, 14, applyInk, TextAnchor.MiddleLeft);
+            if (current != null)
+            {
+                Mark(parent, "Menu", 28f, 756f);
+                Print(parent, "Rename or delete", 60f, 758f, 180f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
+                if (inMembers)
+                {
+                    Mark(parent, "UpDown", 790f + wide, 756f);
+                    Print(parent, "Change template", 820f + wide, 758f, 150f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
+                }
+                else
+                {
+                    Mark(parent, "A", 830f + wide, 756f);
+                    Print(parent, "Open team", 860f + wide, 758f, 120f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
+                }
+                Mark(parent, "X", 990f + wide, 756f);
+                Print(parent, "Apply team", 1020f + wide, 758f, 120f, 24f, 14, applyInk, TextAnchor.MiddleLeft);
+            }
             Mark(parent, "B", 1170f + wide, 756f);
-            Print(parent, "Close", 1200f + wide, 758f, 60f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
+            Print(parent, inMembers ? "Back" : "Close", 1200f + wide, 758f, 60f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
         }
         else
         {
-            Action save = SaveParty, menu = OpenMenu, apply = AskApply;
-            Button_(parent, "Save party's equipped gear as team", "", 24f, 750f, 290f, 36f, false, save);
-            Button_(parent, "Rename or delete", "", 324f, 750f, 180f, 36f, false, menu);
-            Button_(parent, "Apply team", "", 960f + wide, 750f, 150f, 36f, true, apply);
-            EscHint(parent, "Close");
+            if (current != null)
+            {
+                Action menu = OpenMenu, apply = AskApply;
+                Button_(parent, "Rename or delete", "", 14f, 750f, 180f, 36f, false, menu);
+                Button_(parent, "Apply team", "", 960f + wide, 750f, 150f, 36f, true, apply);
+            }
+            EscHint(parent, inMembers ? "Back" : "Close");
         }
+    }
+
+    private void DrawTeamRow(RectTransform parent, TeamTemplate item, int index, float y)
+    {
+        if (index == team)
+            Box(parent, 0f, y, 276f, TeamRowHeight, Style.Band, null);
+        if (index == team && !inMembers)
+            Print(parent, "▸", 10f, y + 10f, 14f, 20f, 13, Style.Text, TextAnchor.MiddleLeft);
+        Fit(parent, item.Name, 28f, y + 8f, 240f, 20f, 15, Style.Text);
+        for (int i = 0; i < item.Members.Count; i++)
+            if (gear.Characters.FirstOrDefault(c => c.Guid == item.Members[i].Avatar) is { } who)
+                Face(parent, who, 28f + i * 26f, y + 32f, 22f, false);
+        Hit(parent, 0f, y, 276f, TeamRowHeight, () => { team = index; member = 0; inMembers = false; });
     }
 
     private void DrawMember(RectTransform parent, TeamMember who, float x, float Width, bool focus, Plan check)
     {
-        const float Height = 516f, Top = 136f;
+        const float Top = MemberTop, Height = MemberHeight;
         Box(parent, x, Top, Width, Height, CardFill, Shapes.Card);
         if (focus)
             Frame(parent, x, Top, Width, Height);
         Character character = gear.Characters.FirstOrDefault(c => c.Guid == who.Avatar);
         if (character != null)
             Face(parent, character, x + 14f, Top + 14f, 42f, false);
-        Print(parent, gear.NameOf(who.Avatar), x + 66f, Top + 24f, Width - 76f, 22f, 16, Style.Text, TextAnchor.MiddleLeft);
+        Fit(parent, gear.NameOf(who.Avatar), x + 66f, Top + 24f, Width - 76f, 22f, 16, Style.Text);
         CharacterTemplate chosen = library.Character(who.Template);
         Box(parent, x + 14f, Top + 68f, Width - 28f, 34f, Style.Band, Shapes.Card);
-        Print(parent, chosen?.Name ?? "Keep equipped gear", x + 14f, Top + 74f, Width - 28f, 22f, 14, Style.Text, TextAnchor.MiddleCenter);
+        Fit(parent, chosen?.Name ?? "Keep equipped gear", x + 40f, Top + 74f, Width - 80f, 22f, 14, Style.Text);
         Print(parent, "‹", x + 22f, Top + 74f, 16f, 22f, 15, Style.Dim, TextAnchor.MiddleLeft);
         Print(parent, "›", x + Width - 38f, Top + 74f, 16f, 22f, 15, Style.Dim, TextAnchor.MiddleRight);
+        TeamMember member_ = who;
+        Hit(parent, x + 14f, Top + 68f, 34f, 34f, () => { member = CurrentTeam!.Members.IndexOf(member_); inMembers = true; ChangeMemberTemplate(-1); });
+        Hit(parent, x + Width - 48f, Top + 68f, 34f, 34f, () => { member = CurrentTeam!.Members.IndexOf(member_); inMembers = true; ChangeMemberTemplate(1); });
+        float icon = (Width - 28f - 12f) / 3f;
         for (int i = 0; i < SlotOrder.Length; i++)
         {
             ulong guid = chosen?.Items.GetValueOrDefault(SlotOrder[i]) ?? gear.Equipped(who.Avatar, SlotOrder[i]);
-            float cx = x + (Width - 270f) / 2f + (i % 3) * 92f, cy = Top + 114f + (i / 3) * 92f;
+            float cx = x + 14f + (i % 3) * (icon + 6f), cy = Top + 114f + (i / 3) * (icon + 6f);
             ItemView view = guid == 0 ? null : gear.View(guid);
             if (view != null)
-                Icon_(parent, view, cx, cy, 86f);
+                Icon_(parent, view, cx, cy, icon);
             else
-                Box(parent, cx, cy, 86f, 86f, Style.Band, Shapes.Card);
+                Box(parent, cx, cy, icon, icon, Style.Band, Shapes.Card);
             if (guid != 0 && check.Clashes.Any(clash => clash.Item == guid))
-                Frame(parent, cx, cy, 86f, 86f, Warn);
+                Frame(parent, cx, cy, icon, icon, Warn);
         }
-        float y = Top + 310f;
+        float y = Top + 114f + 2f * icon + 6f + 16f;
         IEnumerable<ulong> items = SlotOrder.Select(slot => chosen?.Items.GetValueOrDefault(slot, gear.Equipped(who.Avatar, slot)) ?? gear.Equipped(who.Avatar, slot)).Where(guid => guid != 0);
         Fit(parent, SetSummary(items), x + 14f, y, Width - 28f, 18f, 12, Up);
         y += 24f;
@@ -1355,7 +1441,7 @@ internal sealed partial class Panel
             Add(totals, gear.View(guid));
         foreach (var (label, (value, percent)) in totals.OrderBy(pair => Rank(pair.Key)).Take(7))
         {
-            Print(parent, label, x + 14f, y, 180f, 18f, 13, Style.Text, TextAnchor.MiddleLeft);
+            Print(parent, label, x + 14f, y, Width - 90f, 18f, 13, Style.Text, TextAnchor.MiddleLeft);
             Print(parent, Stats.Format(value, percent), x + 14f, y, Width - 28f, 18f, 13, Style.Dim, TextAnchor.MiddleRight);
             y += 22f;
         }

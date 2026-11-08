@@ -66,6 +66,7 @@ internal static class Shapes
         Ring(Box(0f, 0f, 2f * RingRadius + Stretch, 2f * RingRadius + Stretch, RingRadius), 2f), Style.White);
     public static readonly Shape Spinner = Solid("Spinner", 22f, 22f, 0f, Subtract(Ring(Circle(11f, 11f, 10f), 2f), Convex((11f, 11f), (22f, 0f), (22f, 11f))), Style.White);
     public static readonly Shape Check = Solid("Check", 16f, 16f, 0f, Union(Line(3f, 8.5f, 6.5f, 12f, 1.1f), Line(6.5f, 12f, 13f, 4.5f, 1.1f)), Style.White);
+    public static readonly Shape Grid = Solid("Grid", 20f, 20f, 0f, Union(Box(1f, 1f, 8f, 8f, 2f), Box(11f, 1f, 8f, 8f, 2f), Box(1f, 11f, 8f, 8f, 2f), Box(11f, 11f, 8f, 8f, 2f)), Style.White);
     public static readonly Shape Badge = Solid("Badge", 12f + Stretch, 12f + Stretch, 6f, Box(0f, 0f, 12f + Stretch, 12f + Stretch, 6f, 6f, 4f, 4f), Style.Light);
 
     public static readonly Shape Card = Solid("Card", 2f * Style.CardRadius + Stretch, 2f * Style.CardRadius + Stretch, Style.CardRadius,
