@@ -1228,8 +1228,10 @@ internal sealed partial class Panel
         RectTransform main = G("Main");
         if (Selected is { } current)
         {
-            Print(main, current.Name, 296f, 90f, 420f, 28f, 22, Style.Text, TextAnchor.MiddleLeft);
-            Print(main, Current.Name, 300f + current.Name.Length * 13f, 96f, 200f, 18f, 13, Style.Dim, TextAnchor.MiddleLeft);
+            Text heading = Print(main, current.Name, 296f, 90f, 420f, 28f, 22, Style.Text, TextAnchor.MiddleLeft);
+            // After the template's name at its drawn width; a guess from its length overlapped some names.
+            float nameWidth = heading.preferredWidth > 0f ? heading.preferredWidth : current.Name.Length * 13f;
+            Print(main, Current.Name, 296f + nameWidth + 12f, 96f, 200f, 18f, 13, Style.Dim, TextAnchor.MiddleLeft);
             float slotWidth = 208f + wide / 3f;
             for (int i = 0; i < SlotOrder.Length; i++)
             {
@@ -1541,7 +1543,7 @@ internal sealed partial class Panel
         Fit(parent, gear.NameOf(who.Avatar), x + 66f, Top + 24f, Width - 76f, 22f, 16, Style.Text);
         CharacterTemplate chosen = library.Character(who.Template);
         Box(parent, x + 14f, Top + 68f, Width - 28f, 34f, Style.Band, Shapes.Card);
-        Fit(parent, chosen?.Name ?? "Keep equipped gear", x + 40f, Top + 74f, Width - 80f, 22f, 14, Style.Text);
+        Fit(parent, chosen?.Name ?? "Keep equipped gear", x + 40f, Top + 74f, Width - 80f, 22f, 14, Style.Text, TextAnchor.MiddleCenter);
         Print(parent, "‹", x + 22f, Top + 74f, 16f, 22f, 15, Style.Dim, TextAnchor.MiddleLeft);
         Print(parent, "›", x + Width - 38f, Top + 74f, 16f, 22f, 15, Style.Dim, TextAnchor.MiddleRight);
         TeamMember member_ = who;
@@ -1902,9 +1904,9 @@ internal sealed partial class Panel
     }
 
     // One line that shrinks to stay inside its box, for text as long as a set name.
-    private void Fit(Transform parent, string text, float x, float y, float width, float height, int size, Color color)
+    private void Fit(Transform parent, string text, float x, float y, float width, float height, int size, Color color, TextAnchor alignment = TextAnchor.MiddleLeft)
     {
-        Text label = Print(parent, text, x, y, width, height, size, color, TextAnchor.MiddleLeft);
+        Text label = Print(parent, text, x, y, width, height, size, color, alignment);
         label.resizeTextForBestFit = true;
         label.resizeTextMinSize = 8;
         label.resizeTextMaxSize = size;

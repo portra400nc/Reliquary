@@ -217,9 +217,10 @@ internal sealed partial class Panel
         parent = box.Group;
         Wrap(parent, body, box.X + 28f, box.Top + 14f, box.Width - 56f, 44f, 14, Style.Dim, TextAnchor.UpperLeft);
         Action back = Back, delete = DeleteSelected;
+        // No glyphs: the D-pad picks the button and A presses it, so a fixed glyph on either would mislead.
         PromptButtons(parent, box, "", Style.Dim,
-            new PromptButton("Cancel", deleteFocus == 0 ? "A" : "B", false, back, deleteFocus == 0),
-            new PromptButton("Delete", deleteFocus == 1 ? "A" : "", true, delete, deleteFocus == 1, Danger));
+            new PromptButton("Cancel", "", false, back, deleteFocus == 0),
+            new PromptButton("Delete", "", true, delete, deleteFocus == 1, Danger));
     }
 
     private void DrawRename(RectTransform parent)
