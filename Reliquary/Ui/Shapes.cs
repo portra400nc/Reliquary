@@ -101,6 +101,35 @@ internal static class Shapes
 
     private static readonly Dictionary<Shape, Sprite> sprites = [];
 
+    // The focus frame, design A of .work/reliquary-ui/focus: a 2-unit white ring on the marked part's own rounding, and
+    // outside it a warm glow like CSS's box-shadow 0 0 14px 3px, whose strength the panel breathes.
+    public const float FocusGlowMargin = 14f;
+    private const float GlowSigma = 5f;
+    private static readonly Dictionary<float, Shape> focusRings = [], focusGlows = [];
+
+    public static Shape FocusRing(float radius)
+    {
+        if (focusRings.TryGetValue(radius, out Shape ring))
+            return ring;
+        float size = 2f * radius + Stretch;
+        return focusRings[radius] = Solid($"FocusRing{radius}", size, size, radius, Ring(Box(0f, 0f, size, size, radius), 2f), Style.White);
+    }
+
+    public static Shape FocusGlow(float radius)
+    {
+        if (focusGlows.TryGetValue(radius, out Shape glow))
+            return glow;
+        float size = 2f * (FocusGlowMargin + radius) + Stretch;
+        Field outline = Box(FocusGlowMargin, FocusGlowMargin, size - 2f * FocusGlowMargin, size - 2f * FocusGlowMargin, radius);
+        Color warm = Style.Hex(0xf0d6a0, 0.75f);
+        return focusGlows[radius] = new Shape($"FocusGlow{radius}", size, size, FocusGlowMargin + radius, (x, y) =>
+        {
+            float distance = outline(x, y);
+            float strength = distance <= 0f ? 0f : MathF.Exp(-distance * distance / (2f * GlowSigma * GlowSigma));
+            return Style.WithAlpha(warm, warm.a * strength);
+        });
+    }
+
     public static Sprite Get(Shape shape)
     {
         if (sprites.TryGetValue(shape, out Sprite sprite) && sprite)

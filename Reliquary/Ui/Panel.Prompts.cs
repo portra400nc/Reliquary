@@ -28,7 +28,7 @@ internal sealed partial class Panel
 
     private bool Prompting => layer is Layer.Confirm or Layer.Menu or Layer.Rename or Layer.Delete;
 
-    private readonly record struct PromptBox(float X, float Y, float Width, float Height, float Top);
+    private readonly record struct PromptBox(float X, float Y, float Width, float Height, float Top, RectTransform Group);
 
     private readonly record struct PromptButton(string Text, string Glyph, bool Primary, Action Click, bool Focus = false, Color? Fill = null);
 
@@ -57,6 +57,7 @@ internal sealed partial class Panel
         Hit(parent, 0f, -extraY, Width, Style.ReferenceHeight + 2f * extraY, outside ?? (() => { }));
         float x = (Width - width) / 2f, y = (Style.ReferenceHeight - height) / 2f;
         Hit(parent, x, y, width, height, () => { });
+        parent = Sub(parent, "Dialog");
         Box(parent, x, y, width, height, Style.White, Shapes.Dialog);
         Fit(parent, title, x + 28f, y + 20f, width - 56f, 28f, 20, Style.Text);
         float hair = y + 60f;
@@ -66,7 +67,7 @@ internal sealed partial class Panel
             hair = y + 78f;
         }
         Box(parent, x + 28f, hair, width - 56f, 1f, Hair, null);
-        return new PromptBox(x, y, width, height, hair + 1f);
+        return new PromptBox(x, y, width, height, hair + 1f, parent);
     }
 
     private static float PromptHeight(bool sub, float body) => (sub ? 79f : 61f) + body + FootHeight;
@@ -97,6 +98,7 @@ internal sealed partial class Panel
         string sub = team ? $"{members} member{(members == 1 ? "" : "s")}, {items}" : items;
         float width = team ? 760f : 720f;
         PromptBox box = Prompt(parent, width, PromptHeight(true, 16f + lines * RowHeight), planTitle, sub);
+        parent = box.Group;
         float left = box.X + 28f, label = team ? 96f : 78f;
         float column = (width - 56f - label - 22f - 30f) / 2f;
         float from = left + label + 10f, arrow = from + column + 10f, to = arrow + 32f;
@@ -156,6 +158,7 @@ internal sealed partial class Panel
         string sub = tab == Tab.Characters ? Current.Name : "Team template";
         Action back = Back;
         PromptBox box = Prompt(parent, 380f, (sub.Length > 0 ? 79f : 61f) + 12f + 44f + 8f + 44f + 20f, title, sub, back);
+        parent = box.Group;
         Action rename_ = StartRename, delete = AskDelete;
         MenuRow(parent, box, "Rename", 0, Style.Text, rename_);
         MenuRow(parent, box, "Delete", 1, Down, delete);
@@ -167,7 +170,7 @@ internal sealed partial class Panel
         Box(parent, x, y, width, 44f, OptionFill, null);
         Print(parent, label, x + 16f, y, width - 32f, 44f, 15, ink, TextAnchor.MiddleLeft);
         if (index == menuIndex)
-            Frame(parent, x, y, width, 44f);
+            FocusFrame("frame:menu", parent, x, y, width, 44f);
         Hit(parent, x, y, width, 44f, () => { menuIndex = index; click(); });
     }
 
@@ -211,6 +214,7 @@ internal sealed partial class Panel
             body = "The party's gear stays as it is.";
         }
         PromptBox box = Prompt(parent, 500f, PromptHeight(false, 62f), $"Delete {name}?", "");
+        parent = box.Group;
         Wrap(parent, body, box.X + 28f, box.Top + 14f, box.Width - 56f, 44f, 14, Style.Dim, TextAnchor.UpperLeft);
         Action back = Back, delete = DeleteSelected;
         PromptButtons(parent, box, "", Style.Dim,
@@ -221,6 +225,7 @@ internal sealed partial class Panel
     private void DrawRename(RectTransform parent)
     {
         PromptBox box = Prompt(parent, 520f, PromptHeight(false, 74f), tab == Tab.Characters ? "Rename template" : "Rename team", "");
+        parent = box.Group;
         float x = box.X + 28f, y = box.Top + 18f, width = box.Width - 56f;
         Box(parent, x, y, width, 50f, FieldFill, null);
         Box(parent, x, y, width, 1f, FieldEdge, null);
@@ -241,6 +246,8 @@ internal sealed partial class Panel
         Save();
         Back();
     }
+
+    private (float X, float Y) iconAt;
 
     private void DrawToast(RectTransform parent)
     {
@@ -265,13 +272,19 @@ internal sealed partial class Panel
                 Place(spinner, V(0f, 1f), V(0f, 1f), V(0.5f, 0.5f), V(x + 16f + 14f, -(iconY + 14f)), V(22f, 22f));
                 break;
             case ToastKind.Done:
-                Box(parent, x + 16f, iconY, 28f, 28f, Style.WithAlpha(Up, 0.18f), Shapes.Knob);
-                Image check = Picture(parent, "Check", Shapes.Check, Up);
+                RectTransform done = Sub(parent, "ToastIcon");
+                parts["ToastIcon"] = done;
+                iconAt = (x + 30f, iconY + 14f);
+                Box(done, x + 16f, iconY, 28f, 28f, Style.WithAlpha(Up, 0.18f), Shapes.Knob);
+                Image check = Picture(done, "Check", Shapes.Check, Up);
                 TopLeft(check.rectTransform, x + 22f, iconY + 6f, 16f, 16f);
                 break;
             case ToastKind.Warn:
-                Box(parent, x + 16f, iconY, 28f, 28f, Style.WithAlpha(Warn, 0.18f), Shapes.Knob);
-                Print(parent, "!", x + 16f, iconY, 28f, 28f, 15, Warn, TextAnchor.MiddleCenter);
+                RectTransform warn = Sub(parent, "ToastIcon");
+                parts["ToastIcon"] = warn;
+                iconAt = (x + 30f, iconY + 14f);
+                Box(warn, x + 16f, iconY, 28f, 28f, Style.WithAlpha(Warn, 0.18f), Shapes.Knob);
+                Print(warn, "!", x + 16f, iconY, 28f, 28f, 15, Warn, TextAnchor.MiddleCenter);
                 break;
         }
         float right = x + width - 16f - (offerUndo ? 118f : 0f);
@@ -282,12 +295,15 @@ internal sealed partial class Panel
         if (busy && applier.Total > 0)
         {
             Box(parent, textX, y + 50f, right - textX, 3f, Style.Band, null);
-            Box(parent, textX, y + 50f, (right - textX) * applier.Done / applier.Total, 3f, Style.Cream, null);
+            Image bar = Box(parent, textX, y + 50f, (right - textX) * applier.Done / applier.Total, 3f, Style.Cream, null);
+            Glide("toastbar", bar.rectTransform, textX, y + 50f, (right - textX) * applier.Done / applier.Total, 3f, 160f);
         }
         if (offerUndo)
         {
             Action undo_ = Undo;
-            Button_(parent, "Undo", "Y", x + width - 16f - 104f, y + (height - 34f) / 2f, 104f, 34f, false, undo_);
+            RectTransform undoGroup = Sub(parent, "Undo");
+            parts["Undo"] = undoGroup;
+            Button_(undoGroup, "Undo", "Y", x + width - 16f - 104f, y + (height - 34f) / 2f, 104f, 34f, false, undo_);
         }
     }
 }

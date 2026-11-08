@@ -98,6 +98,13 @@ internal sealed partial class Panel
             applier.Update();
             if (open)
             {
+                motion.Update(now);
+                Breathe(now);
+            }
+            if (closing)
+                return;
+            if (open)
+            {
                 LoadOnePortrait();
                 UpdateCursor();
                 AnimatePrompts(now);
@@ -167,6 +174,9 @@ internal sealed partial class Panel
         tab = Tab.Characters;
         layer = Layer.Main;
         open = dirty = true;
+        was = null;
+        glides = [];
+        glidesBefore = [];
         Pad.Settle();
         steps.Run("switch player input", () => ActorUtils.EnablePlayerInput(false, false));
     }
@@ -195,6 +205,18 @@ internal sealed partial class Panel
 
     private void Close()
     {
+        if (!closing)
+            CloseMotion(FinishClose);
+    }
+
+    private void FinishClose()
+    {
+        closing = false;
+        foreach (RectTransform ghost in ghosts)
+            if (ghost)
+                Object.Destroy(ghost.gameObject);
+        ghosts.Clear();
+        was = null;
         LockCursor();
         open = false;
         layer = Layer.Main;
@@ -230,6 +252,10 @@ internal sealed partial class Panel
 
     private void Input_(float now)
     {
+        // Not Input.anyKeyDown: on this game it also reports a controller press, a frame or two after Pad does, which
+        // would finish the animation that press just started.
+        if ((Pad.Held & ~Pad.Previous) != PadButtons.None || KeyboardUsed())
+            motion.FinishAll();
         if (applier.Busy)
             return;
         ClickHits();
@@ -967,62 +993,79 @@ internal sealed partial class Panel
     private void Build()
     {
         dirty = false;
+        Shot now = Take();
+        LeaveMotion(now);
+        RememberGlides();
         hits.Clear();
         if (content)
             Object.Destroy(content);
+        groups.Clear();
+        parts.Clear();
+        slotRects.Clear();
+        marks.Clear();
         content = Node("Content", root.transform).gameObject;
         RectTransform screen = content.GetComponent<RectTransform>();
         Fill(screen);
         backdropShown = backdrop.Picture != null;
         if (backdrop.Picture is { } blurred)
         {
-            var picture = Node("Backdrop", screen).gameObject.AddComponent<RawImage>();
+            RectTransform back = Node("Back", screen);
+            Fill(back);
+            groups["Back"] = back;
+            var picture = Node("Backdrop", back).gameObject.AddComponent<RawImage>();
             picture.texture = blurred;
             picture.color = Style.White;
             picture.raycastTarget = false;
             Fill(picture.rectTransform);
         }
-        Fill(Picture(screen, "Tint", null, Tint).rectTransform);
+        RectTransform tint = Node("Tint", screen);
+        Fill(tint);
+        groups["Tint"] = tint;
+        Fill(Picture(tint, "Tint", null, Tint).rectTransform);
         MeasureScreen();
-        RectTransform rect = Node("Stage", screen);
-        Place(rect, V(0.5f, 0.5f), V(0.5f, 0.5f), V(0.5f, 0.5f), V(0f, 0f), V(Width, Style.ReferenceHeight));
+        stage = Node("Stage", screen);
+        Place(stage, V(0.5f, 0.5f), V(0.5f, 0.5f), V(0.5f, 0.5f), V(0f, 0f), V(Width, Style.ReferenceHeight));
+        RectTransform rect = stage;
         switch (layer)
         {
-            case Layer.Picker: DrawPicker(rect); break;
+            case Layer.Picker: DrawPicker(G("Picker")); break;
             case Layer.WeaponFilter:
-                DrawPicker(rect);
+                DrawPicker(G("Picker"));
                 hits.Clear();
-                DrawWeaponFilter(rect);
+                DrawWeaponFilter(G("Panel"));
                 break;
             case Layer.ArtifactSort:
-                DrawPicker(rect);
+                DrawPicker(G("Picker"));
                 hits.Clear();
-                DrawArtifactSort(rect);
+                DrawArtifactSort(G("Panel"));
                 break;
-            case Layer.SetFilter: DrawSetFilter(rect); break;
+            case Layer.SetFilter: DrawSetFilter(G("Sets")); break;
             case Layer.Chooser:
             case Layer.ChooserFilter:
-                DrawTop(rect);
+                DrawTop(G("Top"));
                 DrawCharacters(rect);
                 hits.Clear();
-                DrawChooser(rect);
+                DrawChooser(G("Chooser"));
                 if (layer == Layer.ChooserFilter)
                 {
                     hits.Clear();
-                    DrawChooserFilter(rect);
+                    DrawChooserFilter(G("Panel"));
                 }
                 break;
             default:
-                DrawTop(rect);
+                DrawTop(G("Top"));
                 if (tab == Tab.Characters) DrawCharacters(rect); else DrawTeams(rect);
                 break;
         }
-        if (layer == Layer.Confirm) DrawConfirm(rect);
-        if (layer == Layer.Menu) DrawMenu(rect);
-        if (layer == Layer.Rename) DrawRename(rect);
-        if (layer == Layer.Delete) DrawDelete(rect);
+        if (layer == Layer.Confirm) DrawConfirm(G("Prompt"));
+        if (layer == Layer.Menu) DrawMenu(G("Prompt"));
+        if (layer == Layer.Rename) DrawRename(G("Prompt"));
+        if (layer == Layer.Delete) DrawDelete(G("Prompt"));
         if (toastUntil != 0f)
-            DrawToast(rect);
+            DrawToast(G("Toast"));
+        ArriveMotion(now);
+        PlaceGhosts();
+        was = now;
     }
 
     // The stage is 800 units tall and as wide as the screen, never narrower than 1280. On a screen wider than 16:10,
@@ -1095,19 +1138,38 @@ internal sealed partial class Panel
             Mark(parent, "RB", rb, 25f);
         int count = gear.Characters.Count;
         float last = rb - 10f - FaceSize, first = last - (Shown - 1) * FaceStep;
-        for (int i = 0; i < Math.Min(Shown, count); i++)
+        // The faces sit in a window, so when the strip moves by one the face leaving it slides out of sight.
+        RectTransform faces = Clip(parent, "Faces", first - 6f, 8f, last + FaceSize - first + 12f, 66f);
+        int start = StripStart(), leaving = was != null && was.Layer == layer && Math.Abs(was.StripStart - start) == 1 ? was.StripStart - start : 0;
+        for (int i = leaving < 0 ? -1 : 0; i < Math.Min(Shown, count) + (leaving > 0 ? 1 : 0); i++)
         {
-            int index = (avatar + i - Math.Min(Shown / 2, avatar) + count) % count;
-            if (avatar >= count - Shown / 2 && count > Shown)
-                index = count - Shown + i;
+            int index = start >= 0 ? start + i : (avatar + i - Math.Min(Shown / 2, avatar) + count) % count;
+            if (index < 0 || index >= count)
+                continue;
             Character who = gear.Characters[index];
             float at = first + i * FaceStep;
-            Face(parent, who, at, 16f, FaceSize, index == avatar);
+            Face(faces, who, at, 16f, FaceSize, false);
+            if (index == avatar)
+            {
+                Image line = Box(parent, at + 4f, 16f + FaceSize + 4f, FaceSize - 8f, 3f, Style.Cream, null);
+                Glide("faceline", line.rectTransform, at + 4f, 16f + FaceSize + 4f, FaceSize - 8f, 3f, CharacterMs);
+            }
             int target = index;
-            Hit(parent, at, 16f, FaceSize, FaceSize, () => { avatar = target; template = 0; inSlots = false; });
+            if (i >= 0 && i < Shown)
+                Hit(parent, at, 16f, FaceSize, FaceSize, () => { avatar = target; template = 0; inSlots = false; });
         }
         if (padLayout)
             Mark(parent, "LB", first - 10f - 30f, 25f);
+    }
+
+    // The first character in the strip's window of nine, or -1 when everyone fits and the strip wraps around instead.
+    private int StripStart()
+    {
+        const int Shown = 9;
+        int count = gear.Characters.Count;
+        if (count <= Shown)
+            return -1;
+        return avatar < Shown / 2 ? 0 : avatar >= count - Shown / 2 ? count - Shown : avatar - Shown / 2;
     }
 
     // Returns the label's width, which the underline spans.
@@ -1116,46 +1178,56 @@ internal sealed partial class Panel
         Text label = Print(parent, text, x, 22f, 160f, 30f, 16, which == tab ? Style.Text : Style.Dim, TextAnchor.MiddleLeft);
         float width = label.preferredWidth > 0f ? label.preferredWidth : text.Length * 11f;
         if (which == tab)
-            Box(parent, x, 56f, width, 3f, Style.Cream, null);
+        {
+            Image line = Box(parent, x, 56f, width, 3f, Style.Cream, null);
+            Glide("underline", line.rectTransform, x, 56f, width, 3f, TabMs);
+        }
         Hit(parent, x, 16f, width, 42f, () => SwitchTab(which));
         return width;
     }
 
     private void DrawCharacters(RectTransform parent)
     {
-        LeftBand(parent, 74f, 276f, 666f, Bar);
+        RectTransform side = G("Side");
+        LeftBand(side, 74f, 276f, 666f, Bar);
+        RectTransform rows = Sub(side, "Rows");
         List<CharacterTemplate> list = Templates;
         float y = 80f;
         for (int i = 0; i < list.Count && y < 590f; i++)
         {
             CharacterTemplate item = list[i];
-            float height = DrawTemplateRow(parent, item, y, i == template && !inSlots ? Selection.Focus : i == template ? Selection.Current : Selection.None);
+            float height = DrawTemplateRow(rows, item, y, i == template && !inSlots ? Selection.Focus : i == template ? Selection.Current : Selection.None);
             int target = i;
-            Hit(parent, 0f, y, 276f, height, () => { template = target; inSlots = false; });
+            Hit(rows, 0f, y, 276f, height, () => { template = target; inSlots = false; });
             y += height;
         }
         if (list.Count == 0)
-            Print(parent, "No templates yet", 28f, 96f, 230f, 20f, 13, Style.Dim, TextAnchor.MiddleLeft);
+            Print(rows, "No templates yet", 28f, 96f, 230f, 20f, 13, Style.Dim, TextAnchor.MiddleLeft);
         Action create = Create, saveEquipped = SaveEquipped;
-        Button_(parent, "Create new template", "Y", 14f, 640f, 248f, 40f, true, create);
-        Button_(parent, "Save equipped gear as template", "View", 14f, 688f, 248f, 40f, false, saveEquipped);
+        Button_(side, "Create new template", "Y", 14f, 640f, 248f, 40f, true, create);
+        Button_(side, "Save equipped gear as template", "View", 14f, 688f, 248f, 40f, false, saveEquipped);
 
+        RectTransform main = G("Main");
         if (Selected is { } current)
         {
-            Print(parent, current.Name, 296f, 90f, 420f, 28f, 22, Style.Text, TextAnchor.MiddleLeft);
-            Print(parent, Current.Name, 300f + current.Name.Length * 13f, 96f, 200f, 18f, 13, Style.Dim, TextAnchor.MiddleLeft);
+            Print(main, current.Name, 296f, 90f, 420f, 28f, 22, Style.Text, TextAnchor.MiddleLeft);
+            Print(main, Current.Name, 300f + current.Name.Length * 13f, 96f, 200f, 18f, 13, Style.Dim, TextAnchor.MiddleLeft);
             float slotWidth = 208f + wide / 3f;
             for (int i = 0; i < SlotOrder.Length; i++)
-                DrawSlot(parent, current, SlotOrder[i], 296f + (i % 3) * (slotWidth + 10f), 128f + (i / 3) * 298f, slotWidth, i);
-            DrawCompare(parent, current);
+            {
+                float x = 296f + (i % 3) * (slotWidth + 10f), top = 128f + (i / 3) * 298f;
+                slotRects[i] = new Vector4 { x = x, y = top, z = slotWidth, w = 288f };
+                DrawSlot(Sub(main, $"Card{i}"), current, SlotOrder[i], x, top, slotWidth, i);
+            }
+            DrawCompare(Sub(main, "Compare"), current);
         }
         else
         {
             float left = layer is Layer.Chooser or Layer.ChooserFilter ? 480f : 296f;
-            Print(parent, $"Create a template for {Current.Name}", left, 340f, 956f + wide - left, 30f, 18, Style.Dim, TextAnchor.MiddleCenter);
+            Print(main, $"Create a template for {Current.Name}", left, 340f, 956f + wide - left, 30f, 18, Style.Dim, TextAnchor.MiddleCenter);
         }
         if (layer is not (Layer.Chooser or Layer.ChooserFilter))
-            DrawFooter(parent, inSlots ? "Change item" : "Open template");
+            DrawFooter(G("Foot"), inSlots ? "Change item" : "Open template");
     }
 
     private const int PickerRows = 4;
@@ -1182,14 +1254,27 @@ internal sealed partial class Panel
         bool equipped = item.Items.Count > 0 && item.Items.All(pair => gear.Equipped(item.Avatar, pair.Key) == pair.Value);
         float height = 48f + (notes.Length > 0 ? 18f : 0f);
         if (selection != Selection.None)
-            Box(parent, 0f, y, 276f, height, Style.Band, null);
+            Highlight(parent, y, height);
         if (selection == Selection.Focus)
-            Print(parent, "▸", 10f, y + 10f, 14f, 20f, 13, Style.Text, TextAnchor.MiddleLeft);
+            Pointer(parent, y);
         Fit(parent, item.Name + (equipped ? "   (Equipped)" : ""), 28f, y + 8f, 240f, 20f, 15, Style.Text);
         Fit(parent, SetSummary(item.Items.Values), 28f, y + 28f, 240f, 16f, 12, Style.Dim);
         if (notes.Length > 0)
             Print(parent, notes, 28f, y + 44f, 240f, 16f, 12, warn ? Warn : Down, TextAnchor.MiddleLeft);
         return height;
+    }
+
+    // The band behind the chosen row of a sidebar list and the arrow that marks it, both gliding to a new row.
+    private void Highlight(RectTransform parent, float y, float height)
+    {
+        Image band = Box(parent, 0f, y, 276f, height, Style.Band, null);
+        Glide($"band:{tab}", band.rectTransform, 0f, y, 276f, height, ListMs);
+    }
+
+    private void Pointer(RectTransform parent, float y)
+    {
+        Text arrow = Print(parent, "▸", 10f, y + 10f, 14f, 20f, 13, Style.Text, TextAnchor.MiddleLeft);
+        Glide($"arrow:{tab}", arrow.rectTransform, 10f, y + 10f, 14f, 20f, ListMs);
     }
 
     private (string, bool) TemplateNote(CharacterTemplate item)
@@ -1224,7 +1309,7 @@ internal sealed partial class Panel
         bool focus = inSlots && index == slotIndex;
         Box(parent, x, y, Width, Height, CardFill, Shapes.Card);
         if (focus)
-            Frame(parent, x, y, Width, Height);
+            FocusFrame("frame:slot", parent, x, y, Width, Height, Style.CardRadius);
         Print(parent, slot.ToString(), x + 12f, y + 10f, 120f, 16f, 12, Style.Dim, TextAnchor.MiddleLeft);
         Hit(parent, x, y, Width, Height, () => { inSlots = true; slotIndex = index; OpenPicker(slot); });
         ulong guid = current.Items.GetValueOrDefault(slot);
@@ -1335,15 +1420,19 @@ internal sealed partial class Panel
 
     private void DrawTeams(RectTransform parent)
     {
-        LeftBand(parent, 74f, 276f, 666f, Bar);
+        RectTransform side = G("Side");
+        // The band first: drawn after the rows, its dark fill covered them.
+        LeftBand(side, 74f, 276f, 666f, Bar);
+        RectTransform rows = Sub(side, "Rows"), main = G("Main"), foot = G("Foot");
         int count = library.Teams.Count;
         int first = Math.Max(0, Math.Min(team - TeamRowsShown + 1, count - TeamRowsShown));
         for (int i = Math.Max(0, first); i < count && i < first + TeamRowsShown; i++)
-            DrawTeamRow(parent, library.Teams[i], i, 80f + (i - first) * TeamRowHeight);
+            DrawTeamRow(rows, library.Teams[i], i, 80f + (i - first) * TeamRowHeight);
         if (count == 0)
-            Print(parent, "No team templates yet", 28f, 96f, 230f, 20f, 13, Style.Dim, TextAnchor.MiddleLeft);
+            Print(rows, "No team templates yet", 28f, 96f, 230f, 20f, 13, Style.Dim, TextAnchor.MiddleLeft);
         Action save = SaveParty;
-        Button_(parent, "Save party as team", "Y", 14f, 688f, 248f, 40f, true, save);
+        Button_(side, "Save party as team", "Y", 14f, 688f, 248f, 40f, true, save);
+        parent = main;
         TeamTemplate current = CurrentTeam;
         Plan check = current == null ? null : Planner.Plan(library.Templates(current), gear);
         if (current != null)
@@ -1353,9 +1442,11 @@ internal sealed partial class Panel
             for (int i = 0; i < current.Members.Count; i++)
             {
                 float x = ContentLeft + i * (width + MemberGap);
-                DrawMember(parent, current.Members[i], x, width, inMembers && i == member, check);
+                RectTransform card = Sub(main, $"Card{i}");
                 int target = i;
-                Hit(parent, x, MemberTop, width, MemberHeight, () => { member = target; inMembers = true; });
+                // Before the card's parts, so its template arrows take their own clicks.
+                Hit(card, x, MemberTop, width, MemberHeight, () => { member = target; inMembers = true; });
+                DrawMember(card, current.Members[i], x, width, inMembers && i == member, check, i);
             }
             if (check.Clashes.Count > 0)
             {
@@ -1368,6 +1459,7 @@ internal sealed partial class Panel
         }
         else
             Print(parent, "Save your party's equipped gear as a team to start", ContentLeft, 340f, Width - 24f - ContentLeft, 30f, 18, Style.Dim, TextAnchor.MiddleCenter);
+        parent = foot;
         Band(parent, 740f, 60f, Bar);
         if (Prompting)
             return;
@@ -1409,9 +1501,9 @@ internal sealed partial class Panel
     private void DrawTeamRow(RectTransform parent, TeamTemplate item, int index, float y)
     {
         if (index == team)
-            Box(parent, 0f, y, 276f, TeamRowHeight, Style.Band, null);
+            Highlight(parent, y, TeamRowHeight);
         if (index == team && !inMembers)
-            Print(parent, "▸", 10f, y + 10f, 14f, 20f, 13, Style.Text, TextAnchor.MiddleLeft);
+            Pointer(parent, y);
         Fit(parent, item.Name, 28f, y + 8f, 240f, 20f, 15, Style.Text);
         for (int i = 0; i < item.Members.Count; i++)
             if (gear.Characters.FirstOrDefault(c => c.Guid == item.Members[i].Avatar) is { } who)
@@ -1419,12 +1511,12 @@ internal sealed partial class Panel
         Hit(parent, 0f, y, 276f, TeamRowHeight, () => { team = index; member = 0; inMembers = false; });
     }
 
-    private void DrawMember(RectTransform parent, TeamMember who, float x, float Width, bool focus, Plan check)
+    private void DrawMember(RectTransform parent, TeamMember who, float x, float Width, bool focus, Plan check, int index)
     {
         const float Top = MemberTop, Height = MemberHeight;
         Box(parent, x, Top, Width, Height, CardFill, Shapes.Card);
         if (focus)
-            Frame(parent, x, Top, Width, Height);
+            FocusFrame("frame:member", parent, x, Top, Width, Height, Style.CardRadius);
         Character character = gear.Characters.FirstOrDefault(c => c.Guid == who.Avatar);
         if (character != null)
             Face(parent, character, x + 14f, Top + 14f, 42f, false);
@@ -1476,20 +1568,45 @@ internal sealed partial class Panel
         Fit(parent, PickerState(), 28f, 80f, 830f + wide, 20f, 13, Style.Dim);
         if (pickerItems.Count == 0)
             Print(parent, "No items match", 28f, 340f, 830f + wide, 24f, 16, Style.Dim, TextAnchor.MiddleCenter);
-        int row = pickerCursor / Columns;
-        int first = Math.Max(0, Math.Min(row - 1, (pickerItems.Count - 1) / Columns - Rows + 1)) * Columns;
-        for (int i = first; i < pickerItems.Count && i < first + Columns * Rows; i++)
+        int firstRow = PickerFirst(), first = firstRow * Columns;
+        // A row that scrolled out of sight is drawn once more, so it can slide away under the window's edge.
+        int leaving = was != null && Base(was.Layer) == Layer.Picker && Math.Abs(was.PickerFirst - firstRow) == 1 ? was.PickerFirst - firstRow : 0;
+        RectTransform grid = Clip(parent, "Grid", 0f, 98f, Style.ReferenceWidth + wide, Rows * (CardHeight + Gap) + 2f);
+        // Who holds an item goes on a layer above the focus frame, which would otherwise cross their portrait.
+        var holderRows = new List<RectTransform>();
+        for (int localRow = leaving < 0 ? -1 : 0; localRow < Rows + (leaving > 0 ? 1 : 0); localRow++)
         {
-            int local = i - first;
-            float x = 28f + (local % Columns) * (CardWidth + Gap), y = 106f + (local / Columns) * (CardHeight + Gap);
-            if (gear.View(pickerItems[i]) is not { } view)
-                continue;
-            ItemCard(parent, view, x, y, CardWidth, CardHeight, i == pickerCursor);
-            int target = i;
-            Hit(parent, x, y, CardWidth, CardHeight, () => { pickerCursor = target; Pick(); });
+            RectTransform cards = Sub(grid, $"PickerRow{localRow + 1}");
+            RectTransform holders = Node($"Holders{localRow + 1}", cards);
+            holderRows.Add(holders);
+            for (int column = 0; column < Columns; column++)
+            {
+                int i = first + localRow * Columns + column;
+                if (i < 0 || i >= pickerItems.Count || gear.View(pickerItems[i]) is not { } view)
+                    continue;
+                float x = 28f + column * (CardWidth + Gap), y = 106f + localRow * (CardHeight + Gap);
+                ItemCard(cards, view, x, y, CardWidth, CardHeight, false, holders);
+                int target = i;
+                if (localRow >= 0 && localRow < Rows)
+                    Hit(cards, x, y, CardWidth, CardHeight, () => { pickerCursor = target; Pick(); });
+            }
+        }
+        if (pickerCursor >= first && pickerCursor < first + Columns * Rows)
+        {
+            int local = pickerCursor - first;
+            FocusFrame("frame:picker", parent, 28f + (local % Columns) * (CardWidth + Gap), 106f + (local / Columns) * (CardHeight + Gap), CardWidth, CardHeight, Style.CardRadius);
+        }
+        RectTransform portraits = Clip(parent, "GridHolders", 0f, 98f, Style.ReferenceWidth + wide, Rows * (CardHeight + Gap) + 2f);
+        foreach (RectTransform holders in holderRows)
+        {
+            holders.SetParent(portraits, false);
+            Fill(holders);
+            groups[holders.name] = holders;
         }
         float Side = 878f + wide;
         const float Width = 378f;
+        RectTransform board = parent;
+        parent = Sub(parent, "Detail");
         if (pickerCursor < pickerItems.Count && gear.View(pickerItems[pickerCursor]) is { } shown)
         {
             Box(parent, Side, 90f, Width, 400f, CardFill, Shapes.Card);
@@ -1518,6 +1635,7 @@ internal sealed partial class Panel
             Action pick = Pick;
             Button_(parent, "Use in this template", "A", Side, 504f, Width, 42f, true, pick);
         }
+        parent = board;
         Band(parent, 740f, 60f, Bar);
         bool weapon = pickerSlot == Slot.Weapon;
         string freeText = Query.OnlyFree ? "Show all items" : "Unequipped items";
@@ -1557,6 +1675,14 @@ internal sealed partial class Panel
         }
     }
 
+    // The first row of items the picker shows, which keeps the cursor off the window's top and bottom rows.
+    private int PickerFirst()
+    {
+        int Columns = PickerColumns;
+        int row = pickerCursor / Columns;
+        return Math.Max(0, Math.Min(row - 1, (pickerItems.Count - 1) / Columns - PickerRows + 1));
+    }
+
     private string PickerState()
     {
         var filters = new List<string>();
@@ -1577,7 +1703,7 @@ internal sealed partial class Panel
             var (key, label) = WeaponAttributes[i];
             int count = pickerSource.Count(item => item.Secondary == key);
             int index = i;
-            OptionRow(parent, 16f, 118f + i * 46f, 360f, label, weaponQuery.Secondary.Contains(key) ? "" : null, count.ToString(), count == 0, i == panelCursor, () => { panelCursor = index; ToggleSecondary(key); });
+            OptionRow(parent, 16f, 118f + i * 46f, 360f, label, weaponQuery.Secondary.Contains(key) ? "" : null, count.ToString(), count == 0, i == panelCursor, key, () => { panelCursor = index; ToggleSecondary(key); });
         }
         DrawPanelFooter(parent, () => { weaponQuery.Secondary.Clear(); FillPicker(); });
     }
@@ -1590,13 +1716,15 @@ internal sealed partial class Panel
             var (key, label) = SortAffixes[i];
             int order = SortList().IndexOf(key);
             int index = i;
-            OptionRow(parent, 16f, 140f + i * 46f, 360f, label, order >= 0 ? (order + 1).ToString() : null, "", false, i == panelCursor, () => { panelCursor = index; ToggleSort(key); });
+            OptionRow(parent, 16f, 140f + i * 46f, 360f, label, order >= 0 ? (order + 1).ToString() : null, "", false, i == panelCursor, key, () => { panelCursor = index; ToggleSort(key); });
         }
         DrawPanelFooter(parent, () => { SortList().Clear(); FillPicker(); });
     }
 
     private void DrawPanelFrame(RectTransform parent, string title, string section, string hint)
     {
+        Cover(G("PanelDim"), Style.Hex(0x060a14, 0.5f));
+        parent.SetAsLastSibling();
         LeftBand(parent, 0f, 392f, 800f, Style.Hex(0x202938, 0.985f));
         Print(parent, title, 22f, 34f, 340f, 26f, 18, Style.Cream, TextAnchor.MiddleLeft);
         Box(parent, 16f, 70f, 360f, 1f, Style.Hex(0xd3bc8e, 0.3f), null);
@@ -1624,12 +1752,13 @@ internal sealed partial class Panel
     }
 
     // mark is null when the row is not selected, and the text to show in its circle when it is.
-    private void OptionRow(RectTransform parent, float x, float y, float width, string label, string mark, string count, bool dim, bool focus, Action click)
+    private void OptionRow(RectTransform parent, float x, float y, float width, string label, string mark, string count, bool dim, bool focus, string markKey, Action click)
     {
         Color ink = dim ? Style.Hex(0xece5d8, 0.35f) : Style.Text;
         Box(parent, x, y, width, 40f, Style.Hex(0x0a101c, 0.3f), null);
         Image radio = Picture(parent, "Radio", Shapes.Knob, mark != null ? Up : Style.Hex(0xece5d8, 0.22f));
         TopLeft(radio.rectTransform, x + 12f, y + 12f, 16f, 16f);
+        marks[markKey] = radio.rectTransform;
         if (!string.IsNullOrEmpty(mark))
         {
             Text number = ui.Label(radio.rectTransform, "Number", mark, 11, Style.BackInk, TextAnchor.MiddleCenter);
@@ -1638,8 +1767,15 @@ internal sealed partial class Panel
         Print(parent, label, x + 38f, y + 9f, width - 90f, 22f, 14, ink, TextAnchor.MiddleLeft);
         Print(parent, count, x, y + 9f, width - 12f, 22f, 14, ink, TextAnchor.MiddleRight);
         if (focus)
-            Frame(parent, x, y, width, 40f);
+            FocusFrame("frame:option", parent, x, y, width, 40f);
         Hit(parent, x, y, width, 40f, click);
+    }
+
+    // The first row of sets in view, which keeps the cursor near the middle of the list.
+    private int SetFirstRow()
+    {
+        const int PerColumn = 14;
+        return Math.Max(0, Math.Min(panelCursor / 2 - PerColumn / 2, (setRows.Count + 1) / 2 - PerColumn));
     }
 
     private void DrawSetFilter(RectTransform parent)
@@ -1651,30 +1787,45 @@ internal sealed partial class Panel
         Print(parent, "Artifact set filter", 64f, 24f, 500f, 24f, 17, Style.Cream, TextAnchor.MiddleLeft);
         Print(parent, "Artifacts that meet the requirements will be shown", 64f, 48f, 600f, 18f, 12, Style.Dim, TextAnchor.MiddleLeft);
         Box(parent, 64f, 72f, 1152f + wide, 1f, Style.Hex(0xd3bc8e, 0.3f), null);
-        int row = panelCursor / 2;
-        int firstRow = Math.Max(0, Math.Min(row - PerColumn / 2, (setRows.Count + 1) / 2 - PerColumn));
-        for (int i = firstRow * 2; i < setRows.Count && i < (firstRow + PerColumn) * 2; i++)
+        int firstRow = SetFirstRow();
+        int leaving = was != null && was.Layer == Layer.SetFilter && Math.Abs(was.SetFirst - firstRow) == 1 ? was.SetFirst - firstRow : 0;
+        // Row backgrounds, then the light band on the focused row gliding between them, then the rows' contents.
+        RectTransform backs = Clip(parent, "SetRowsBack", Left, Top, 2f * ColumnWidth + 14f, PerColumn * RowHeight);
+        int from = (firstRow + (leaving < 0 ? -1 : 0)) * 2, to = (firstRow + PerColumn + (leaving > 0 ? 1 : 0)) * 2;
+        for (int i = Math.Max(0, from); i < setRows.Count && i < to; i++)
+            Box(backs, Left + (i % 2) * (ColumnWidth + 14f), Top + (i / 2 - firstRow) * RowHeight, ColumnWidth, 38f, Style.Hex(0x283448, 0.6f), null);
+        if (panelCursor < setRows.Count)
+        {
+            float bandX = Left + (panelCursor % 2) * (ColumnWidth + 14f), bandY = Top + (panelCursor / 2 - firstRow) * RowHeight;
+            Image band = Box(parent, bandX, bandY, ColumnWidth, 38f, Paper, null);
+            Glide("band:sets", band.rectTransform, bandX, bandY, ColumnWidth, 38f, 120f);
+        }
+        RectTransform rows = Clip(parent, "SetRows", Left, Top, 2f * ColumnWidth + 14f, PerColumn * RowHeight);
+        for (int i = Math.Max(0, from); i < setRows.Count && i < to; i++)
         {
             var set = setRows[i];
             float x = Left + (i % 2) * (ColumnWidth + 14f), y = Top + (i / 2 - firstRow) * RowHeight;
             bool focus = i == panelCursor, selected = artifactQuery.Sets.Contains(set.Id);
-            Box(parent, x, y, ColumnWidth, 38f, focus ? Paper : Style.Hex(0x283448, 0.6f), null);
             Color ink = focus ? PaperInk : Style.Text;
-            Image radio = Picture(parent, "Radio", Shapes.Knob, selected ? Up : focus ? Style.Hex(0x3f3b30, 0.25f) : Style.Hex(0xece5d8, 0.22f));
+            Image radio = Picture(rows, "Radio", Shapes.Knob, selected ? Up : focus ? Style.Hex(0x3f3b30, 0.25f) : Style.Hex(0xece5d8, 0.22f));
             TopLeft(radio.rectTransform, x + 12f, y + 11f, 16f, 16f);
+            marks[set.Id.ToString()] = radio.rectTransform;
             if (icons.Small(set.Icon) is { } small)
             {
-                var icon = Node("Icon", parent).gameObject.AddComponent<RawImage>();
+                var icon = Node("Icon", rows).gameObject.AddComponent<RawImage>();
                 icon.texture = small;
                 icon.raycastTarget = false;
                 TopLeft(icon.rectTransform, x + 34f, y + 4f, 30f, 30f);
             }
-            Fit(parent, set.Name, x + 70f, y + 8f, ColumnWidth - 120f, 22f, 14, ink);
-            Print(parent, set.Count.ToString(), x, y + 8f, ColumnWidth - 12f, 22f, 14, ink, TextAnchor.MiddleRight);
+            Fit(rows, set.Name, x + 70f, y + 8f, ColumnWidth - 120f, 22f, 14, ink);
+            Print(rows, set.Count.ToString(), x, y + 8f, ColumnWidth - 12f, 22f, 14, ink, TextAnchor.MiddleRight);
             int index = i;
             uint id = set.Id;
-            Hit(parent, x, y, ColumnWidth, 38f, () => { panelCursor = index; ToggleSet(id); });
+            if (i / 2 >= firstRow && i / 2 < firstRow + PerColumn)
+                Hit(rows, x, y, ColumnWidth, 38f, () => { panelCursor = index; ToggleSet(id); });
         }
+        RectTransform page = parent;
+        parent = Sub(parent, "SetCard");
         if (panelCursor < setRows.Count)
         {
             var shown = setRows[panelCursor];
@@ -1701,6 +1852,7 @@ internal sealed partial class Panel
                 y += height + 8f;
             }
         }
+        parent = page;
         Band(parent, 740f, 60f, Bar);
         if (padLayout)
         {
@@ -1755,13 +1907,17 @@ internal sealed partial class Panel
         return box;
     }
 
-    private static void Frame(Transform parent, float x, float y, float width, float height, Color? color = null)
+    // A 2-unit outline just outside (x, y, width, height). Its edges stretch with one node, so it can glide and resize.
+    private static RectTransform Frame(Transform parent, float x, float y, float width, float height, Color? color = null)
     {
         Color ink = color ?? Style.White;
-        Box(parent, x - 2f, y - 2f, width + 4f, 2f, ink, null);
-        Box(parent, x - 2f, y + height, width + 4f, 2f, ink, null);
-        Box(parent, x - 2f, y, 2f, height, ink, null);
-        Box(parent, x + width, y, 2f, height, ink, null);
+        RectTransform frame = Node("Frame", parent);
+        TopLeft(frame, x - 2f, y - 2f, width + 4f, height + 4f);
+        Place(Picture(frame, "Top", null, ink).rectTransform, V(0f, 1f), V(1f, 1f), V(0.5f, 1f), V(0f, 0f), V(0f, 2f));
+        Place(Picture(frame, "Bottom", null, ink).rectTransform, V(0f, 0f), V(1f, 0f), V(0.5f, 0f), V(0f, 0f), V(0f, 2f));
+        Place(Picture(frame, "Left", null, ink).rectTransform, V(0f, 0f), V(0f, 1f), V(0f, 0.5f), V(0f, 0f), V(2f, 0f));
+        Place(Picture(frame, "Right", null, ink).rectTransform, V(1f, 0f), V(1f, 1f), V(1f, 0.5f), V(0f, 0f), V(2f, 0f));
+        return frame;
     }
 
     private void Hit(Transform parent, float x, float y, float width, float height, Action click)
@@ -1836,7 +1992,7 @@ internal sealed partial class Panel
 
     // The game's own item card: art on a rarity plate, stars on its lower edge, level on a light strip, the lock and
     // refinement in the top left and who has it equipped in the top right.
-    private void ItemCard(Transform parent, ItemView view, float x, float y, float width, float height, bool focus)
+    private void ItemCard(Transform parent, ItemView view, float x, float y, float width, float height, bool focus, Transform holderLayer = null)
     {
         Box(parent, x, y, width, height, Style.Strip, Shapes.Card);
         Icon_(parent, view, x, y, width);
@@ -1857,7 +2013,7 @@ internal sealed partial class Panel
             TopLeft(padlock.rectTransform, x + 7f, badge + 2f, 12f, 14f);
         }
         if (gear.Holder(view.Guid) is { } holder && gear.Characters.FirstOrDefault(c => c.Guid == holder) is { } who)
-            Face(parent, who, x + width - 30f, y - 6f, 34f, false);
+            Face(holderLayer ?? parent, who, x + width - 30f, y - 6f, 34f, false);
         if (focus)
             Frame(parent, x, y, width, height);
     }
