@@ -31,6 +31,8 @@ internal sealed partial class Panel
     private readonly Action<string> log, warning;
     private readonly Steps steps;
     private readonly Gear gear;
+    private readonly Backdrop backdrop;
+    private bool backdropShown;
     private readonly GameIcons icons;
     private readonly MenuTile tile;
     private readonly Applier applier;
@@ -80,6 +82,7 @@ internal sealed partial class Panel
         icons = new GameIcons(steps, log);
         tile = new MenuTile(steps, log);
         applier = new Applier(gear, Finished);
+        backdrop = new Backdrop(steps, log);
     }
 
     public void Update(float now, float deltaTime)
@@ -98,6 +101,11 @@ internal sealed partial class Panel
                 LoadOnePortrait();
                 UpdateCursor();
                 AnimatePrompts(now);
+                backdrop.Update(now);
+                // The picture appears a frame or two after the camera first draws into it, and goes with a screen resize.
+                bool blurred = backdrop.Picture != null;
+                if (blurred != backdropShown)
+                    dirty = true;
             }
             if (!open)
             {
@@ -193,6 +201,7 @@ internal sealed partial class Panel
         if (root)
             Object.Destroy(root);
         root = content = null;
+        backdrop.Release();
         Pad.Settle();
         steps.Run("switch player input", () => ActorUtils.EnablePlayerInput(true, false));
     }
@@ -964,6 +973,15 @@ internal sealed partial class Panel
         content = Node("Content", root.transform).gameObject;
         RectTransform screen = content.GetComponent<RectTransform>();
         Fill(screen);
+        backdropShown = backdrop.Picture != null;
+        if (backdrop.Picture is { } blurred)
+        {
+            var picture = Node("Backdrop", screen).gameObject.AddComponent<RawImage>();
+            picture.texture = blurred;
+            picture.color = Style.White;
+            picture.raycastTarget = false;
+            Fill(picture.rectTransform);
+        }
         Fill(Picture(screen, "Tint", null, Tint).rectTransform);
         MeasureScreen();
         RectTransform rect = Node("Stage", screen);
