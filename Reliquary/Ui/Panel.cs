@@ -1735,14 +1735,12 @@ internal sealed partial class Panel
             }
             Mark(parent, "X", x, 756f);
             Print(parent, freeText, x + 32f, 758f, 180f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
-            Mark(parent, "A", 1010f + wide, 756f);
-            Print(parent, "Use in template", 1040f + wide, 758f, 130f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
             Mark(parent, "B", 1170f + wide, 756f);
             Print(parent, "Back", 1200f + wide, 758f, 60f, 24f, 14, Style.Text, TextAnchor.MiddleLeft);
         }
         else
         {
-            Action filter = OpenFilter, sort = OpenSort, free = ToggleFree, pick = Pick;
+            Action filter = OpenFilter, sort = OpenSort, free = ToggleFree;
             float x = 24f;
             Button_(parent, "Filter", "", x, 750f, 90f, 36f, false, filter);
             x += 100f;
@@ -1752,7 +1750,6 @@ internal sealed partial class Panel
                 x += 90f;
             }
             Button_(parent, freeText, "", x, 750f, 180f, 36f, false, free);
-            Button_(parent, "Use in template", "", 990f + wide, 750f, 160f, 36f, true, pick);
             EscHint(parent, "Back");
         }
     }
