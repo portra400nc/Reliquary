@@ -38,6 +38,7 @@ internal sealed partial class Panel
         ulong keep = Current.Guid;
         roster = Roster.Apply(gear.Characters.Select(who => new RosterEntry(who.Guid, who.Level, who.Rarity, who.Element, who.Weapon, gear.Party.Contains(who.Guid))), rosterQuery);
         rosterCursor = Math.Max(0, roster.FindIndex(entry => entry.Guid == keep));
+        rosterTop = null;
         ShowFocused();
     }
 
@@ -59,6 +60,7 @@ internal sealed partial class Panel
         if (roster.Count == 0)
             return;
         rosterCursor = Math.Clamp(rosterCursor + by, 0, roster.Count - 1);
+        rosterTop = null;
         ShowFocused();
     }
 
@@ -121,14 +123,13 @@ internal sealed partial class Panel
 
     private void ChooserInput(float now)
     {
-        float wheel = Input.mouseScrollDelta.y;
         if (Repeat(PadButtons.DpadLeft, KeyCode.LeftArrow, now))
             MoveRoster(-1);
         else if (Repeat(PadButtons.DpadRight, KeyCode.RightArrow, now))
             MoveRoster(1);
-        else if (Repeat(PadButtons.DpadUp, KeyCode.UpArrow, now) || wheel > 0f)
+        else if (Repeat(PadButtons.DpadUp, KeyCode.UpArrow, now))
             MoveRoster(-RosterColumns);
-        else if (Repeat(PadButtons.DpadDown, KeyCode.DownArrow, now) || wheel < 0f)
+        else if (Repeat(PadButtons.DpadDown, KeyCode.DownArrow, now))
             MoveRoster(RosterColumns);
         else if (Pressed(PadButtons.Y, KeyCode.N))
             OpenRosterFilter();
@@ -188,6 +189,7 @@ internal sealed partial class Panel
         // A row that scrolled out of sight is drawn once more, so it can slide away under the window's edge.
         int leaving = was != null && Base(was.Layer) == Layer.Chooser && Math.Abs(was.RosterFirst - firstRow) == 1 ? was.RosterFirst - firstRow : 0;
         RectTransform grid = Clip(parent, "Roster", 0f, RosterTop - 2f, RosterWidth - 14f, RosterRows * (CardHeight + CardGapY) + 2f);
+        Scroll(parent, 0f, RosterTop - 2f, RosterWidth - 14f, RosterRows * (CardHeight + CardGapY) + 2f, CardHeight + CardGapY, ScrollRoster);
         for (int localRow = leaving < 0 ? -1 : 0; localRow < RosterRows + (leaving > 0 ? 1 : 0); localRow++)
         {
             RectTransform cards = Sub(grid, $"RosterRow{localRow + 1}");
@@ -235,8 +237,8 @@ internal sealed partial class Panel
     // The first row of the list in view, which keeps the cursor off the window's top row.
     private int RosterFirstRow()
     {
-        int lastRow = (Math.Max(roster.Count, 1) - 1) / RosterColumns;
-        return Math.Max(0, Math.Min(rosterCursor / RosterColumns - 1, lastRow - RosterRows + 1));
+        int last = Math.Max(0, (Math.Max(roster.Count, 1) - 1) / RosterColumns - RosterRows + 1);
+        return rosterTop is { } top ? Math.Clamp(top, 0, last) : Math.Max(0, Math.Min(rosterCursor / RosterColumns - 1, last));
     }
 
     // Art on a rarity plate, with the element in the top left, the level on a light strip and lime edges on a party member.

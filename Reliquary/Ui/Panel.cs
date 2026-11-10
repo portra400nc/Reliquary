@@ -181,6 +181,7 @@ internal sealed partial class Panel
         avatar = Math.Max(0, gear.Characters.ToList().FindIndex(character => character.Guid == active));
         template = slotIndex = member = 0;
         inSlots = false;
+        stripTop = rosterTop = pickerTop = setTop = teamTop = null;
         tab = Tab.Characters;
         layer = Layer.Main;
         open = dirty = true;
@@ -247,7 +248,16 @@ internal sealed partial class Panel
                 Object.Destroy(ghost.gameObject);
         ghosts.Clear();
         was = null;
-        LockCursor();
+        // Back to a game menu that is still open (it stays when its Leave button is hidden, as with keyboard and mouse),
+        // the game wants the cursor free; locking it hid the cursor until the menu was opened again.
+        if (tile.Open)
+        {
+            cursorFreed = false;
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+        }
+        else
+            LockCursor();
         open = false;
         layer = Layer.Main;
         if (root)
@@ -289,7 +299,7 @@ internal sealed partial class Panel
             motion.FinishAll();
         if (applier.Busy)
             return;
-        ClickHits();
+        MouseInput();
         switch (layer)
         {
             case Layer.Main:
@@ -426,7 +436,7 @@ internal sealed partial class Panel
     private void PickerInput(float now)
     {
         int Columns = PickerColumns;
-        ScrollDetail(-Pad.RightY * DetailStickSpeed * frameTime - Input.mouseScrollDelta.y * DetailWheelStep);
+        ScrollDetail(-Pad.RightY * DetailStickSpeed * frameTime);
         if (Repeat(PadButtons.DpadLeft, KeyCode.LeftArrow, now))
             MovePicker(-1);
         else if (Repeat(PadButtons.DpadRight, KeyCode.RightArrow, now))
@@ -566,26 +576,13 @@ internal sealed partial class Panel
         return true;
     }
 
-    private void ClickHits()
-    {
-        if (!Input.GetMouseButtonDown(0))
-            return;
-        var point = new Vector2 { x = Input.mousePosition.x, y = Input.mousePosition.y };
-        for (int i = hits.Count - 1; i >= 0; i--)
-            if (hits[i].Rect && RectTransformUtility.RectangleContainsScreenPoint(hits[i].Rect, point, null))
-            {
-                hits[i].Click();
-                dirty = true;
-                return;
-            }
-    }
-
     // Actions
 
     private void SwitchTab(Tab next)
     {
         tab = next;
         inSlots = false;
+        teamTop = null;
         if (tab == Tab.Teams)
         {
             int deployed = library.Teams.FindIndex(candidate => candidate.Members.Select(m => m.Avatar).OrderBy(g => g).SequenceEqual(gear.Party.OrderBy(g => g)));
@@ -599,6 +596,7 @@ internal sealed partial class Panel
     private void MoveAvatar(int by)
     {
         avatar = (avatar + by + gear.Characters.Count) % gear.Characters.Count;
+        stripTop = null;
         template = 0;
         inSlots = false;
         dirty = true;
@@ -655,6 +653,7 @@ internal sealed partial class Panel
     {
         if (library.Teams.Count > 0)
             team = (team + by + library.Teams.Count) % library.Teams.Count;
+        teamTop = null;
         member = 0;
         dirty = true;
     }
@@ -717,6 +716,7 @@ internal sealed partial class Panel
         if (pickerSlot != Slot.Weapon)
             query.Sort.AddRange(SortList());
         pickerItems = [.. Picking.Apply(pickerSource, query).Select(item => item.Guid)];
+        pickerTop = null;
         pickerCursor = Math.Clamp(pickerCursor, 0, Math.Max(0, pickerItems.Count - 1));
     }
 
@@ -730,6 +730,7 @@ internal sealed partial class Panel
     private void OpenFilter()
     {
         panelCursor = 0;
+        setTop = null;
         if (pickerSlot == Slot.Weapon)
         {
             savedChoice = [.. weaponQuery.Secondary];
@@ -760,6 +761,7 @@ internal sealed partial class Panel
     {
         if (count > 0)
             panelCursor = wrap ? (panelCursor + by + count) % count : Math.Clamp(panelCursor + by, 0, count - 1);
+        setTop = null;
         dirty = true;
     }
 
@@ -814,6 +816,7 @@ internal sealed partial class Panel
         if (pickerItems.Count == 0)
             return;
         pickerCursor = Math.Clamp(pickerCursor + by, 0, pickerItems.Count - 1);
+        pickerTop = null;
         dirty = true;
     }
 
@@ -1021,7 +1024,7 @@ internal sealed partial class Panel
         Shot now = Take();
         LeaveMotion(now);
         RememberGlides();
-        hits.Clear();
+        ClearInput();
         if (content)
             Object.Destroy(content);
         groups.Clear();
@@ -1056,12 +1059,12 @@ internal sealed partial class Panel
             case Layer.Picker: DrawPicker(G("Picker")); break;
             case Layer.WeaponFilter:
                 DrawPicker(G("Picker"));
-                hits.Clear();
+                ClearInput();
                 DrawWeaponFilter(G("Panel"));
                 break;
             case Layer.ArtifactSort:
                 DrawPicker(G("Picker"));
-                hits.Clear();
+                ClearInput();
                 DrawArtifactSort(G("Panel"));
                 break;
             case Layer.SetFilter: DrawSetFilter(G("Sets")); break;
@@ -1069,11 +1072,11 @@ internal sealed partial class Panel
             case Layer.ChooserFilter:
                 DrawTop(G("Top"));
                 DrawCharacters(rect);
-                hits.Clear();
+                ClearInput();
                 DrawChooser(G("Chooser"));
                 if (layer == Layer.ChooserFilter)
                 {
-                    hits.Clear();
+                    ClearInput();
                     DrawChooserFilter(G("Panel"));
                 }
                 break;
@@ -1165,6 +1168,7 @@ internal sealed partial class Panel
         float last = rb - 10f - FaceSize, first = last - (Shown - 1) * FaceStep;
         // The faces sit in a window, so when the strip moves by one the face leaving it slides out of sight.
         RectTransform faces = Clip(parent, "Faces", first - 6f, 8f, last + FaceSize - first + 12f, 66f);
+        Scroll(parent, first - 6f, 8f, last + FaceSize - first + 12f, 66f, FaceStep, ScrollStrip, across: true);
         int start = StripStart(), leaving = was != null && was.Layer == layer && Math.Abs(was.StripStart - start) == 1 ? was.StripStart - start : 0;
         for (int i = leaving < 0 ? -1 : 0; i < Math.Min(Shown, count) + (leaving > 0 ? 1 : 0); i++)
         {
@@ -1194,6 +1198,8 @@ internal sealed partial class Panel
         int count = gear.Characters.Count;
         if (count <= Shown)
             return -1;
+        if (stripTop is { } top)
+            return Math.Clamp(top, 0, count - Shown);
         return avatar < Shown / 2 ? 0 : avatar >= count - Shown / 2 ? count - Shown : avatar - Shown / 2;
     }
 
@@ -1452,7 +1458,8 @@ internal sealed partial class Panel
         LeftBand(side, 74f, 276f, 666f, Bar);
         RectTransform rows = Sub(side, "Rows"), main = G("Main"), foot = G("Foot");
         int count = library.Teams.Count;
-        int first = Math.Max(0, Math.Min(team - TeamRowsShown + 1, count - TeamRowsShown));
+        int first = TeamFirstRow();
+        Scroll(rows, 0f, 80f, 276f, TeamRowsShown * TeamRowHeight, TeamRowHeight, ScrollTeams);
         for (int i = Math.Max(0, first); i < count && i < first + TeamRowsShown; i++)
             DrawTeamRow(rows, library.Teams[i], i, 80f + (i - first) * TeamRowHeight);
         if (count == 0)
@@ -1599,6 +1606,7 @@ internal sealed partial class Panel
         // A row that scrolled out of sight is drawn once more, so it can slide away under the window's edge.
         int leaving = was != null && Base(was.Layer) == Layer.Picker && Math.Abs(was.PickerFirst - firstRow) == 1 ? was.PickerFirst - firstRow : 0;
         RectTransform grid = Clip(parent, "Grid", 0f, 98f, Style.ReferenceWidth + wide, Rows * (CardHeight + Gap) + 2f);
+        Scroll(parent, 0f, 98f, 28f + Columns * (CardWidth + Gap), Rows * (CardHeight + Gap) + 2f, CardHeight + Gap, ScrollPicker);
         // Who holds an item goes on a layer above the focus frame, which would otherwise cross their portrait.
         var holderRows = new List<RectTransform>();
         for (int localRow = leaving < 0 ? -1 : 0; localRow < Rows + (leaving > 0 ? 1 : 0); localRow++)
@@ -1648,6 +1656,7 @@ internal sealed partial class Panel
             const float Top = 176f;
             float bottom = CardBottom - (elsewhere ? 58f : 8f);
             RectTransform body = Clip(parent, "DetailBody", Side, Top, Width, bottom - Top);
+            ScrollSmooth(parent, Side, Top, Width, bottom - Top, ScrollDetail);
             float y = Top + 4f;
             if (shown.Main is { } main)
             {
@@ -1736,8 +1745,8 @@ internal sealed partial class Panel
     private int PickerFirst()
     {
         int Columns = PickerColumns;
-        int row = pickerCursor / Columns;
-        return Math.Max(0, Math.Min(row - 1, (pickerItems.Count - 1) / Columns - PickerRows + 1));
+        int row = pickerCursor / Columns, last = Math.Max(0, (pickerItems.Count - 1) / Columns - PickerRows + 1);
+        return pickerTop is { } top ? Math.Clamp(top, 0, last) : Math.Max(0, Math.Min(row - 1, last));
     }
 
     private string PickerState()
@@ -1831,13 +1840,15 @@ internal sealed partial class Panel
     // The first row of sets in view, which keeps the cursor near the middle of the list.
     private int SetFirstRow()
     {
-        const int PerColumn = 14;
-        return Math.Max(0, Math.Min(panelCursor / 2 - PerColumn / 2, (setRows.Count + 1) / 2 - PerColumn));
+        int last = Math.Max(0, (setRows.Count + 1) / 2 - SetRowsShown);
+        return setTop is { } top ? Math.Clamp(top, 0, last) : Math.Max(0, Math.Min(panelCursor / 2 - SetRowsShown / 2, last));
     }
+
+    private const int SetRowsShown = 14;
 
     private void DrawSetFilter(RectTransform parent)
     {
-        const int PerColumn = 14;
+        const int PerColumn = SetRowsShown;
         const float Left = 64f, Top = 86f, RowHeight = 45f;
         float ColumnWidth = 411f + wide / 2f;
         Cover(parent, Style.Hex(0x151c2a, 0.97f));
@@ -1851,13 +1862,14 @@ internal sealed partial class Panel
         int from = (firstRow + (leaving < 0 ? -1 : 0)) * 2, to = (firstRow + PerColumn + (leaving > 0 ? 1 : 0)) * 2;
         for (int i = Math.Max(0, from); i < setRows.Count && i < to; i++)
             Box(backs, Left + (i % 2) * (ColumnWidth + 14f), Top + (i / 2 - firstRow) * RowHeight, ColumnWidth, 38f, Style.Hex(0x283448, 0.6f), null);
-        if (panelCursor < setRows.Count)
+        if (panelCursor < setRows.Count && panelCursor / 2 >= firstRow && panelCursor / 2 < firstRow + PerColumn)
         {
             float bandX = Left + (panelCursor % 2) * (ColumnWidth + 14f), bandY = Top + (panelCursor / 2 - firstRow) * RowHeight;
             Image band = Box(parent, bandX, bandY, ColumnWidth, 38f, Paper, null);
             Glide("band:sets", band.rectTransform, bandX, bandY, ColumnWidth, 38f, 120f);
         }
         RectTransform rows = Clip(parent, "SetRows", Left, Top, 2f * ColumnWidth + 14f, PerColumn * RowHeight);
+        Scroll(parent, Left, Top, 2f * ColumnWidth + 14f, PerColumn * RowHeight, RowHeight, ScrollSets);
         for (int i = Math.Max(0, from); i < setRows.Count && i < to; i++)
         {
             var set = setRows[i];
@@ -1964,7 +1976,6 @@ internal sealed partial class Panel
     }
 
     private const float DetailStickSpeed = 520f;
-    private const float DetailWheelStep = 40f;
 
     private void ScrollDetail(float by)
     {

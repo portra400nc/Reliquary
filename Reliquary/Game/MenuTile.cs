@@ -14,7 +14,9 @@ internal sealed class MenuTile(Steps steps, Action<string> log)
     private float nextLook, nextPagesLook;
     private Transform pages;
     private GameObject page;
-    private Transform tile, quit, exit;
+    private static readonly string[] LeaveButtons = ["BtnExit", "BtnReturn"];
+    private readonly Dictionary<string, Transform> leave = [];
+    private Transform tile, quit;
 
     public bool Open => page && page.activeInHierarchy;
 
@@ -86,14 +88,18 @@ internal sealed class MenuTile(Steps steps, Action<string> log)
     }
 
     // Leaves the menu the way its own Leave button does.
+    // The controller layout's button is BtnExit_PS; with keyboard and mouse it is hidden and BtnReturn closes the menu.
     public void Leave()
     {
-        if (page && !exit)
-            exit = Descendant(page.transform, "BtnExit");
-        if (exit && ButtonUnder(exit) is { } button && button.gameObject.activeInHierarchy)
+        foreach (string name in LeaveButtons)
         {
-            button.onClick.Invoke();
-            return;
+            if (page && (!leave.TryGetValue(name, out Transform found) || !found))
+                leave[name] = Descendant(page.transform, name);
+            if (leave.GetValueOrDefault(name) is { } node && node && node.gameObject.activeInHierarchy && ButtonUnder(node) is { } button)
+            {
+                button.onClick.Invoke();
+                return;
+            }
         }
         log("the Paimon menu has no Leave button to press");
     }

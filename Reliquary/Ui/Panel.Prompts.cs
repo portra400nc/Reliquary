@@ -52,7 +52,7 @@ internal sealed partial class Panel
     // Dims the screen, takes every click outside the panel (outside runs on one), and draws the panel and its title.
     private PromptBox Prompt(RectTransform parent, float width, float height, string title, string sub, Action outside = null)
     {
-        hits.Clear();
+        ClearInput();
         Cover(parent, Scrim);
         Hit(parent, 0f, -extraY, Width, Style.ReferenceHeight + 2f * extraY, outside ?? (() => { }));
         float x = (Width - width) / 2f, y = (Style.ReferenceHeight - height) / 2f;
