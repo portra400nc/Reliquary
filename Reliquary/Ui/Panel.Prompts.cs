@@ -171,7 +171,7 @@ internal sealed partial class Panel
         Print(parent, label, x + 16f, y, width - 32f, 44f, 15, ink, TextAnchor.MiddleLeft);
         if (index == menuIndex)
             FocusFrame("frame:menu", parent, x, y, width, 44f);
-        Hit(parent, x, y, width, 44f, () => { menuIndex = index; click(); });
+        Hit(parent, x, y, width, 44f, () => { menuIndex = index; click(); }, Hover.Wash);
     }
 
     private void AskDelete()

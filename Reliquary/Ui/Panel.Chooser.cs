@@ -186,14 +186,17 @@ internal sealed partial class Panel
                     if (i >= roster.Count)
                         continue;
                     float x = RosterLeft + column * (CardWidth + CardGapX);
-                    RosterCard(cards, roster[i], x, y, false);
+                    // Each card in a group of its own, which hover lifts.
+                    RectTransform card = Node("Card", cards);
+                    Fill(card);
+                    RosterCard(card, roster[i], x, y, false);
                     int target = i;
                     Hit(cards, x, y, CardWidth, CardHeight, () =>
                     {
                         rosterCursor = target;
                         ShowFocused();
                         ChooseCharacter();
-                    });
+                    }, Hover.Lift, 3f, false, card);
                 }
             }
             if (rosterCursor < roster.Count)
@@ -272,7 +275,7 @@ internal sealed partial class Panel
         Image funnel = Picture(parent, "Funnel", Shapes.Funnel, rosterQuery.Filtered ? Style.Cream : Style.Text);
         TopLeft(funnel.rectTransform, x, ControlsY + 7f, 16f, 16f);
         Action filter = OpenRosterFilter, sort = NextRosterSort, flip = FlipRosterOrder;
-        Hit(parent, RosterLeft, ControlsY - 2f, x + 16f - RosterLeft, 34f, filter);
+        Hit(parent, RosterLeft, ControlsY - 2f, x + 16f - RosterLeft, 34f, filter, Hover.Wash, 17f);
         x += 28f;
         float orderX = End - 16f - (padLayout ? 32f : 4f);
         float pillWidth = orderX - 12f - x;
@@ -280,12 +283,12 @@ internal sealed partial class Panel
         Print(parent, rosterQuery.Sort.ToString(), x + 14f, ControlsY + 1f, pillWidth - 40f, 28f, 14, PaperInk, TextAnchor.MiddleLeft);
         if (padLayout)
             Mark(parent, "X", x + pillWidth - 27f, ControlsY + 3f);
-        Hit(parent, x, ControlsY - 2f, pillWidth, 34f, sort);
+        Hit(parent, x, ControlsY + 1f, pillWidth, 28f, sort, Hover.Edge, 14f, true);
         Image order = Picture(parent, "Order", Shapes.SortOrder, rosterQuery.Ascending ? Style.Cream : Style.Text);
         TopLeft(order.rectTransform, orderX, ControlsY + 7f, 16f, 16f);
         if (padLayout)
             Mark(parent, "Menu", orderX + 22f, ControlsY + 3f);
-        Hit(parent, orderX, ControlsY - 2f, End - orderX, 34f, flip);
+        Hit(parent, orderX, ControlsY - 2f, End - orderX, 34f, flip, Hover.Wash, 17f);
     }
 
     private void DrawChooserFilter(RectTransform parent)

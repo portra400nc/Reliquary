@@ -37,9 +37,9 @@ internal sealed partial class Panel
     private readonly MenuTile tile;
     private readonly Applier applier;
     private readonly Dictionary<PadButtons, float> repeats = [];
-    // Window is the scrolled window a hit was drawn in: a list draws rows beyond its window, hidden, which must not take
-    // clicks meant for what lies there.
-    private readonly List<(RectTransform Rect, RectTransform Window, Action Click)> hits = [];
+    // Each hit keeps the scrolled window it was drawn in: a list draws rows beyond its window, hidden, which must not
+    // take clicks meant for what lies there.
+    private readonly List<HitArea> hits = [];
     private RectTransform hitWindow;
 
     private Library library = new();
@@ -108,6 +108,7 @@ internal sealed partial class Panel
                 motion.Update(now);
                 Breathe(now);
                 UpdateScrolling(now);
+                UpdateHover();
             }
             if (closing)
                 return;
@@ -1016,6 +1017,7 @@ internal sealed partial class Panel
     private void Build()
     {
         dirty = false;
+        DropHover();
         Shot now = Take();
         LeaveMotion(now);
         RememberGlides();
@@ -1044,6 +1046,7 @@ internal sealed partial class Panel
         ArriveMotion(now);
         PlaceGhosts();
         was = now;
+        UpdateHover(advance: false);
     }
 
     private void Draw(RectTransform screen)
@@ -1171,7 +1174,7 @@ internal sealed partial class Panel
             TopLeft(badge.rectTransform, tileX + TileSize - 13f, 16f + TileSize - 13f, 20f, 20f);
             Fill(ui.Label(badge.rectTransform, "Text", "L3", 8, Style.White, TextAnchor.MiddleCenter).rectTransform);
         }
-        Hit(parent, tileX, 16f, TileSize, TileSize, chooser);
+        Hit(parent, tileX, 16f, TileSize, TileSize, chooser, Hover.Ring, Style.CardRadius);
         Box(parent, divider, 22f, 1f, 30f, Hair, null);
         if (padLayout)
             Mark(parent, "RB", rb, 25f);
@@ -1193,7 +1196,7 @@ internal sealed partial class Panel
                     Glide("faceline", line.rectTransform, at + 4f, 16f + FaceSize + 4f, FaceSize - 8f, 3f, CharacterMs);
                 }
                 int target = index;
-                Hit(faces, at, 16f, FaceSize, FaceSize, () => { avatar = target; template = 0; inSlots = false; });
+                Hit(faces, at, 16f, FaceSize, FaceSize, () => { avatar = target; template = 0; inSlots = false; }, Hover.Ring, FaceSize / 2f);
             }
         }, margin: 3f * FaceStep, before: state => Follow(state, was != null && was.Avatar != avatar, firstShow, avatar * FaceStep, avatar * FaceStep + FaceSize + 12f, 4f * FaceStep));
         if (padLayout)
@@ -1210,7 +1213,7 @@ internal sealed partial class Panel
             Image line = Box(parent, x, 56f, width, 3f, Style.Cream, null);
             Glide("underline", line.rectTransform, x, 56f, width, 3f, TabMs);
         }
-        Hit(parent, x, 16f, width, 42f, () => SwitchTab(which));
+        Hit(parent, x, 16f, width, 42f, () => SwitchTab(which), which == tab ? Hover.None : Hover.Tab);
         return width;
     }
 
@@ -1237,7 +1240,7 @@ internal sealed partial class Panel
                 float y = SideListTop + tops[i];
                 float height = DrawTemplateRow(content, list[i], y, i == template && !inSlots ? Selection.Focus : i == template ? Selection.Current : Selection.None);
                 int target = i;
-                Hit(content, 0f, y, 276f, height, () => { template = target; inSlots = false; });
+                Hit(content, 0f, y, 276f, height, () => { template = target; inSlots = false; }, Hover.Wash);
             }
             if (list.Count == 0)
                 Print(content, "No templates yet", 28f, 96f, 230f, 20f, 13, Style.Dim, TextAnchor.MiddleLeft);
@@ -1352,7 +1355,7 @@ internal sealed partial class Panel
         if (focus)
             FocusFrame("frame:slot", parent, x, y, Width, Height, Style.CardRadius);
         Print(parent, slot.ToString(), x + 12f, y + 10f, 120f, 16f, 12, Style.Dim, TextAnchor.MiddleLeft);
-        Hit(parent, x, y, Width, Height, () => { inSlots = true; slotIndex = index; OpenPicker(slot); });
+        Hit(parent, x, y, Width, Height, () => { inSlots = true; slotIndex = index; OpenPicker(slot); }, Hover.Lift, Style.CardRadius, false, parent);
         ulong guid = current.Items.GetValueOrDefault(slot);
         ItemView view = guid == 0 ? null : gear.View(guid);
         if (guid == 0)
@@ -1492,7 +1495,7 @@ internal sealed partial class Panel
                 RectTransform card = Sub(main, $"Card{i}");
                 int target = i;
                 // Before the card's parts, so its template arrows take their own clicks.
-                Hit(card, x, MemberTop, width, MemberHeight, () => { member = target; inMembers = true; });
+                Hit(card, x, MemberTop, width, MemberHeight, () => { member = target; inMembers = true; }, Hover.Lift, Style.CardRadius, false, card);
                 DrawMember(card, current.Members[i], x, width, inMembers && i == member, check, i);
             }
             if (check.Clashes.Count > 0)
@@ -1555,7 +1558,7 @@ internal sealed partial class Panel
         for (int i = 0; i < item.Members.Count; i++)
             if (gear.Characters.FirstOrDefault(c => c.Guid == item.Members[i].Avatar) is { } who)
                 Face(parent, who, 28f + i * 26f, y + 32f, 22f, false);
-        Hit(parent, 0f, y, 276f, TeamRowHeight, () => { team = index; member = 0; inMembers = false; });
+        Hit(parent, 0f, y, 276f, TeamRowHeight, () => { team = index; member = 0; inMembers = false; }, Hover.Wash);
     }
 
     private void DrawMember(RectTransform parent, TeamMember who, float x, float Width, bool focus, Plan check, int index)
@@ -1574,8 +1577,8 @@ internal sealed partial class Panel
         Print(parent, "‹", x + 22f, Top + 74f, 16f, 22f, 15, Style.Dim, TextAnchor.MiddleLeft);
         Print(parent, "›", x + Width - 38f, Top + 74f, 16f, 22f, 15, Style.Dim, TextAnchor.MiddleRight);
         TeamMember member_ = who;
-        Hit(parent, x + 14f, Top + 68f, 34f, 34f, () => { member = CurrentTeam!.Members.IndexOf(member_); inMembers = true; ChangeMemberTemplate(-1); });
-        Hit(parent, x + Width - 48f, Top + 68f, 34f, 34f, () => { member = CurrentTeam!.Members.IndexOf(member_); inMembers = true; ChangeMemberTemplate(1); });
+        Hit(parent, x + 14f, Top + 68f, 34f, 34f, () => { member = CurrentTeam!.Members.IndexOf(member_); inMembers = true; ChangeMemberTemplate(-1); }, Hover.Wash, 17f);
+        Hit(parent, x + Width - 48f, Top + 68f, 34f, 34f, () => { member = CurrentTeam!.Members.IndexOf(member_); inMembers = true; ChangeMemberTemplate(1); }, Hover.Wash, 17f);
         float icon = (Width - 28f - 12f) / 3f;
         for (int i = 0; i < SlotOrder.Length; i++)
         {
@@ -1637,9 +1640,13 @@ internal sealed partial class Panel
                     if (i >= pickerItems.Count || gear.View(pickerItems[i]) is not { } view)
                         continue;
                     float x = 28f + column * (CardWidth + Gap);
-                    ItemCard(rowCards, view, x, y, CardWidth, CardHeight, false, rowHolders);
+                    // The card and its holder's face in groups of their own, which hover lifts together.
+                    RectTransform item = Node("Card", rowCards), holder = Node("Holder", rowHolders);
+                    Fill(item);
+                    Fill(holder);
+                    ItemCard(item, view, x, y, CardWidth, CardHeight, false, holder);
                     int target = i;
-                    Hit(rowCards, x, y, CardWidth, CardHeight, () => { pickerCursor = target; Pick(); });
+                    Hit(rowCards, x, y, CardWidth, CardHeight, () => { pickerCursor = target; Pick(); }, Hover.Lift, Style.CardRadius, false, item, holder);
                 }
             }
             if (pickerCursor < pickerItems.Count)
@@ -1839,7 +1846,7 @@ internal sealed partial class Panel
         Print(parent, count, x, y + 9f, width - 12f, 22f, 14, ink, TextAnchor.MiddleRight);
         if (focus)
             FocusFrame("frame:option", parent, x, y, width, 40f);
-        Hit(parent, x, y, width, 40f, click);
+        Hit(parent, x, y, width, 40f, click, Hover.Wash);
     }
 
     private const int SetRowsShown = 14;
@@ -1892,7 +1899,7 @@ internal sealed partial class Panel
                 Print(rows, set.Count.ToString(), x, y + 8f, ColumnWidth - 12f, 22f, 14, ink, TextAnchor.MiddleRight);
                 int index = i;
                 uint id = set.Id;
-                Hit(rows, x, y, ColumnWidth, 38f, () => { panelCursor = index; ToggleSet(id); });
+                Hit(rows, x, y, ColumnWidth, 38f, () => { panelCursor = index; ToggleSet(id); }, Hover.Wash);
             }
         }, margin: 4f * RowHeight, before: state => Follow(state, was != null && was.PanelCursor != panelCursor, firstShow, cursorRow * RowHeight, cursorRow * RowHeight + 38f, 3f * RowHeight));
         RectTransform page = parent;
@@ -2003,13 +2010,6 @@ internal sealed partial class Panel
         Place(Picture(frame, "Left", null, ink).rectTransform, V(0f, 0f), V(0f, 1f), V(0f, 0.5f), V(0f, 0f), V(2f, 0f));
         Place(Picture(frame, "Right", null, ink).rectTransform, V(1f, 0f), V(1f, 1f), V(1f, 0.5f), V(0f, 0f), V(2f, 0f));
         return frame;
-    }
-
-    private void Hit(Transform parent, float x, float y, float width, float height, Action click)
-    {
-        RectTransform rect = Node("Hit", parent);
-        TopLeft(rect, x, y, width, height);
-        hits.Add((rect, hitWindow, click));
     }
 
     // The Esc keycap and what it does, at the right end of the footer.
@@ -2133,6 +2133,10 @@ internal sealed partial class Panel
 
     private void Button_(Transform parent, string text, string glyph, float x, float y, float width, float height, bool primary, Action click, Color? outline = null, Color? fill = null)
     {
+        // In a group of its own, which a press dips.
+        RectTransform button = Node("Button", parent);
+        Fill(button);
+        parent = button;
         Box(parent, x, y, width, height, fill ?? (primary ? Style.Light : outline == null ? Style.Band : Style.Hex(0x3f3b30, 0.12f)), Shapes.Pill);
         Color textInk = fill != null ? Style.White : primary ? Style.BackInk : outline ?? Style.Text;
         bool showGlyph = padLayout && glyph.Length > 0;
@@ -2142,6 +2146,6 @@ internal sealed partial class Panel
             Fit(parent, text, x + 48f, y + (height - 18f) / 2f, width - 58f, 18f, 13, textInk);
         else
             Print(parent, text, x, y, width, height, 13, textInk, TextAnchor.MiddleCenter);
-        Hit(parent, x, y, width, height, click);
+        Hit(parent, x, y, width, height, click, Hover.Edge, height / 2f, primary && fill == null, button);
     }
 }

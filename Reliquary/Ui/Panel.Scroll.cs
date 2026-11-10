@@ -113,6 +113,7 @@ internal sealed partial class Panel
             float offset = list.State.Offset;
             if (!float.IsPositiveInfinity(list.Margin) && (offset < list.DrawnFrom || offset + list.State.View > list.DrawnTo))
             {
+                DropHover();
                 Widgets.BeginReuse(list.Content);
                 try
                 {
@@ -134,14 +135,7 @@ internal sealed partial class Panel
         return null;
     }
 
-    private Action HitAt(Vector2 point)
-    {
-        for (int i = hits.Count - 1; i >= 0; i--)
-            if (hits[i].Rect && RectTransformUtility.RectangleContainsScreenPoint(hits[i].Rect, point, null)
-                && (hits[i].Window is not { } window || window && RectTransformUtility.RectangleContainsScreenPoint(window, point, null)))
-                return hits[i].Click;
-        return null;
-    }
+    private Action HitAt(Vector2 point) => AreaAt(point)?.Click;
 
     // The pointer along a list's axis in canvas units, decreasing as the content is pulled forward.
     private static float Along(ScrollList list, Vector2 point)

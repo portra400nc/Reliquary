@@ -115,6 +115,27 @@ internal static class Shapes
         return focusRings[radius] = Solid($"FocusRing{radius}", size, size, radius, Ring(Box(0f, 0f, size, size, radius), 2f), Style.White);
     }
 
+    // A plain rounded rectangle in white, for washes tinted to taste.
+    private static readonly Dictionary<float, Shape> roundeds = [], liftShadows = [];
+
+    public static Shape Rounded(float radius)
+    {
+        if (roundeds.TryGetValue(radius, out Shape shape))
+            return shape;
+        float size = 2f * radius + Stretch;
+        return roundeds[radius] = Solid($"Rounded{radius}", size, size, radius, Box(0f, 0f, size, size, radius), Style.White);
+    }
+
+    // A hovered card's shadow, CSS's drop-shadow(0 6px 10px), placed LiftShadowMargin outside the card and tinted black.
+    public const float LiftShadowMargin = 15f;
+
+    public static Shape LiftShadow(float radius)
+    {
+        if (liftShadows.TryGetValue(radius, out Shape shape))
+            return shape;
+        return liftShadows[radius] = Blurred($"LiftShadow{radius}", LiftShadowMargin, radius, (5f, Style.White));
+    }
+
     public static Shape FocusGlow(float radius)
     {
         if (focusGlows.TryGetValue(radius, out Shape glow))
