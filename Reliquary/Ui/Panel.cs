@@ -1462,7 +1462,7 @@ internal sealed partial class Panel
     private const int TeamRowsShown = 9;
     // The sidebar's lists scroll between the top bar and the sidebar's buttons.
     private const float SideListTop = 74f, SideListBottom = 632f;
-    private const float TeamRowHeight = 64f, MemberTop = 128f, MemberHeight = 516f, MemberGap = 12f;
+    private const float TeamRowHeight = 64f, MemberTop = 128f, MemberHeight = 526f, MemberGap = 12f;
 
     private void DrawTeams(RectTransform parent)
     {
@@ -1599,11 +1599,14 @@ internal sealed partial class Panel
         var totals = new Dictionary<string, (float, bool)>();
         foreach (ulong guid in items)
             Add(totals, gear.View(guid));
-        foreach (var (label, (value, percent)) in totals.OrderBy(pair => Rank(pair.Key)).Take(7))
+        // Every stat shows: the rows close up when they would run past the card.
+        float pitch = totals.Count == 0 ? 22f : Math.Min(22f, (Top + Height - 12f - y) / totals.Count);
+        int size = pitch < 20f ? 12 : 13;
+        foreach (var (label, (value, percent)) in totals.OrderBy(pair => Rank(pair.Key)))
         {
-            Print(parent, label, x + 14f, y, Width - 90f, 18f, 13, Style.Text, TextAnchor.MiddleLeft);
-            Print(parent, Stats.Format(value, percent), x + 14f, y, Width - 28f, 18f, 13, Style.Dim, TextAnchor.MiddleRight);
-            y += 22f;
+            Print(parent, label, x + 14f, y, Width - 90f, Math.Min(18f, pitch), size, Style.Text, TextAnchor.MiddleLeft);
+            Print(parent, Stats.Format(value, percent), x + 14f, y, Width - 28f, Math.Min(18f, pitch), size, Style.Dim, TextAnchor.MiddleRight);
+            y += pitch;
         }
     }
 
