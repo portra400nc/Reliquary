@@ -53,6 +53,11 @@ internal sealed partial class Panel
     private bool inSlots;
     private Slot pickerSlot;
     private int pickerCursor;
+    // The picker's item details scroll below the item's name; the offset resets for each new item.
+    private ulong detailItem;
+    private float detailScroll, detailScrollMax, detailBaseY, detailTrack, detailView, detailThumbX;
+    private RectTransform detailBody, detailThumb;
+    private float frameTime;
     private readonly PickerQuery weaponQuery = new();
     private readonly PickerQuery artifactQuery = new();
     private readonly Dictionary<Slot, List<string>> sortBySlot = [];
@@ -89,6 +94,7 @@ internal sealed partial class Panel
     {
         try
         {
+            frameTime = deltaTime;
             Pad.Poll(now, log);
             if (Pad.Held != PadButtons.None || Pad.Stick != PadButtons.None)
                 padLayout = true;
@@ -420,6 +426,7 @@ internal sealed partial class Panel
     private void PickerInput(float now)
     {
         int Columns = PickerColumns;
+        ScrollDetail(-Pad.RightY * DetailStickSpeed * frameTime - Input.mouseScrollDelta.y * DetailWheelStep);
         if (Repeat(PadButtons.DpadLeft, KeyCode.LeftArrow, now))
             MovePicker(-1);
         else if (Repeat(PadButtons.DpadRight, KeyCode.RightArrow, now))
@@ -1627,30 +1634,58 @@ internal sealed partial class Panel
         const float Width = 378f;
         RectTransform board = parent;
         parent = Sub(parent, "Detail");
+        detailBody = detailThumb = null;
+        detailScrollMax = 0f;
         if (pickerCursor < pickerItems.Count && gear.View(pickerItems[pickerCursor]) is { } shown)
         {
             Box(parent, Side, 90f, Width, 400f, CardFill, Shapes.Card);
             Icon_(parent, shown, Side + 14f, 104f, 64f);
             Wrap(parent, shown.Name, Side + 88f, 104f, Width - 100f, 64f, 15, Style.Text);
-            float y = 180f;
+            ulong? holder = gear.Holder(shown.Guid);
+            bool elsewhere = holder is { } other && other != Current.Guid;
+            const float Top = 176f;
+            float bottom = elsewhere ? 432f : 482f;
+            RectTransform body = Clip(parent, "DetailBody", Side, Top, Width, bottom - Top);
+            float y = Top + 4f;
             if (shown.Main is { } main)
             {
-                Print(parent, main.Label, Side + 14f, y, 220f, 20f, 14, Style.Cream, TextAnchor.MiddleLeft);
-                Print(parent, Stats.Format(main), Side + 14f, y, Width - 28f, 20f, 14, Style.Cream, TextAnchor.MiddleRight);
+                Print(body, main.Label, Side + 14f, y, 220f, 20f, 14, Style.Cream, TextAnchor.MiddleLeft);
+                Print(body, Stats.Format(main), Side + 14f, y, Width - 28f, 20f, 14, Style.Cream, TextAnchor.MiddleRight);
                 y += 24f;
             }
-            Print(parent, pickerSlot == Slot.Weapon ? $"Level {shown.Level}, Refinement {shown.Refinement}" : $"Level {shown.Level}", Side + 14f, y, Width - 28f, 18f, 12, Style.Dim, TextAnchor.MiddleLeft);
+            Print(body, pickerSlot == Slot.Weapon ? $"Level {shown.Level}, Refinement {shown.Refinement}" : $"Level {shown.Level}", Side + 14f, y, Width - 28f, 18f, 12, Style.Dim, TextAnchor.MiddleLeft);
             y += 28f;
             foreach (ItemStat stat in shown.Subs)
             {
-                Print(parent, stat.Label, Side + 14f, y, 220f, 18f, 13, Style.Dim, TextAnchor.MiddleLeft);
-                Print(parent, Stats.Format(stat), Side + 14f, y, Width - 28f, 18f, 13, Style.Dim, TextAnchor.MiddleRight);
+                Print(body, stat.Label, Side + 14f, y, 220f, 18f, 13, Style.Dim, TextAnchor.MiddleLeft);
+                Print(body, Stats.Format(stat), Side + 14f, y, Width - 28f, 18f, 13, Style.Dim, TextAnchor.MiddleRight);
                 y += 22f;
             }
-            if (gear.Holder(shown.Guid) is { } holder && holder != Current.Guid)
+            if (pickerSlot != Slot.Weapon && shown.Set != 0)
             {
-                Print(parent, $"Equipped by {gear.NameOf(holder)}", Side + 14f, 440f, Width - 28f, 18f, 13, Warn, TextAnchor.MiddleLeft);
-                Print(parent, $"Applying gives {gear.NameOf(holder)} {Current.Name}'s equipped {pickerSlot.ToString().ToLowerInvariant()}", Side + 14f, 462f, Width - 28f, 18f, 12, Style.Dim, TextAnchor.MiddleLeft);
+                Print(body, ArtifactSets.Name(shown.Set), Side + 14f, y + 8f, Width - 28f, 20f, 14, Style.SetName, TextAnchor.MiddleLeft);
+                y += 34f;
+                foreach (string piece in ArtifactSets.Bonuses(shown.Set))
+                    y += Paragraph(body, piece, Side + 14f, y, Width - 34f, 12, Style.Dim) + 8f;
+            }
+            if (shown.Guid != detailItem)
+            {
+                detailItem = shown.Guid;
+                detailScroll = 0f;
+            }
+            detailBody = body;
+            detailBaseY = body.anchoredPosition.y;
+            detailView = bottom - Top;
+            detailTrack = Top;
+            detailScrollMax = Math.Max(0f, y - bottom);
+            detailThumbX = Side + Width - Style.ThumbRight - Style.ThumbWidth;
+            if (detailScrollMax > 0f)
+                detailThumb = Box(parent, detailThumbX, Top, Style.ThumbWidth, Style.ThumbMin, Style.Thumb, Shapes.Bar).rectTransform;
+            ScrollDetail(0f);
+            if (elsewhere)
+            {
+                Print(parent, $"Equipped by {gear.NameOf(holder.Value)}", Side + 14f, 440f, Width - 28f, 18f, 13, Warn, TextAnchor.MiddleLeft);
+                Print(parent, $"Applying gives {gear.NameOf(holder.Value)} {Current.Name}'s equipped {pickerSlot.ToString().ToLowerInvariant()}", Side + 14f, 462f, Width - 28f, 18f, 12, Style.Dim, TextAnchor.MiddleLeft);
             }
             Action pick = Pick;
             Button_(parent, "Use in this template", "A", Side, 504f, Width, 42f, true, pick);
@@ -1912,6 +1947,36 @@ internal sealed partial class Panel
         label.resizeTextMaxSize = size;
         label.horizontalOverflow = HorizontalWrapMode.Wrap;
         label.verticalOverflow = VerticalWrapMode.Truncate;
+    }
+
+    // Wrapped text as tall as its lines, from the top; returns that height.
+    private float Paragraph(Transform parent, string text, float x, float y, float width, int size, Color color)
+    {
+        Text label = Print(parent, text, x, y, width, 400f, size, color, TextAnchor.UpperLeft);
+        label.horizontalOverflow = HorizontalWrapMode.Wrap;
+        float height = label.preferredHeight;
+        if (height <= 0f)
+            height = MathF.Ceiling(text.Length * size * 0.5f / width) * size * 1.3f;
+        TopLeft(label.rectTransform, x, y, width, height);
+        return height;
+    }
+
+    private const float DetailStickSpeed = 520f;
+    private const float DetailWheelStep = 40f;
+
+    private void ScrollDetail(float by)
+    {
+        if (!detailBody)
+            return;
+        detailScroll = Math.Clamp(detailScroll + by, 0f, detailScrollMax);
+        Vector2 at = detailBody.anchoredPosition;
+        at.y = detailBaseY + detailScroll;
+        detailBody.anchoredPosition = at;
+        if (!detailThumb)
+            return;
+        float content = detailView + detailScrollMax;
+        float height = Math.Max(Style.ThumbMin, detailView * detailView / content);
+        TopLeft(detailThumb, detailThumbX, detailTrack + (detailView - height) * detailScroll / detailScrollMax, Style.ThumbWidth, height);
     }
 
     private void Wrap(Transform parent, string text, float x, float y, float width, float height, int size, Color color, TextAnchor alignment = TextAnchor.MiddleLeft)

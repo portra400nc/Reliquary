@@ -78,5 +78,10 @@ internal static class ArtifactSets
 
     private static readonly Dictionary<uint, ArtifactSet> ById = All.ToDictionary(set => set.Id);
 
+    // The 2-piece and 4-piece effects, each one paragraph; the table keeps the text's line breaks as " · ".
+    public static IEnumerable<string> Bonuses(uint id) => ById.TryGetValue(id, out ArtifactSet set) && set.Bonus.Length > 0
+        ? set.Bonus.Split(" | ").Select(piece => piece.Replace(" · · ", "\n").Replace(" · ", "\n"))
+        : [];
+
     public static string Name(uint id) => ById.TryGetValue(id, out ArtifactSet set) ? set.Name : $"Set {id}";
 }

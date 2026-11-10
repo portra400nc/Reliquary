@@ -25,10 +25,11 @@ internal enum PadButtons : ushort
 }
 
 // The controller as CameraTools reads it: XInput by P/Invoke, xinput1_4.dll first, then xinput9_1_0.dll. Only the
-// buttons the panel uses and the left stick are kept.
+// buttons the panel uses and both sticks are kept.
 internal static class Pad
 {
     private const int LeftStickDeadzone = 7849;
+    private const int RightStickDeadzone = 8689;
     private const float StickPress = 0.5f;
     private const byte TriggerPress = 128;
     private const uint ErrorSuccess = 0;
@@ -72,6 +73,8 @@ internal static class Pad
     public static PadButtons Previous { get; private set; }
     // The left stick pushed past half way along its stronger axis, as a D-pad press.
     public static PadButtons Stick { get; private set; }
+    // The right stick's vertical push from -1 (down) to 1 (up), the strongest of all pads, for scrolling.
+    public static float RightY { get; private set; }
 
     public static bool Pressed(PadButtons button) => (Held & button) != 0 && (Previous & button) == 0;
 
@@ -85,6 +88,7 @@ internal static class Pad
     {
         Previous = Held;
         Held = Stick = PadButtons.None;
+        RightY = 0f;
         if (library == Library.Untried)
             Load(log);
         if (library == Library.Missing)
@@ -122,6 +126,10 @@ internal static class Pad
         Stick |= MathF.Abs(y) >= MathF.Abs(x)
             ? y >= StickPress ? PadButtons.DpadUp : y <= -StickPress ? PadButtons.DpadDown : PadButtons.None
             : x >= StickPress ? PadButtons.DpadRight : x <= -StickPress ? PadButtons.DpadLeft : PadButtons.None;
+        int right = raw.thumbRY;
+        float push = Math.Abs(right) <= RightStickDeadzone ? 0f : Math.Min((Math.Abs(right) - RightStickDeadzone) / (32767f - RightStickDeadzone), 1f) * Math.Sign(right);
+        if (Math.Abs(push) > Math.Abs(RightY))
+            RightY = push;
     }
 
     private static void Load(Action<string> log)
