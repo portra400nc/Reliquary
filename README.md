@@ -1,64 +1,101 @@
+<div align="center">
+
 # Reliquary
 
-Save weapon and artifact templates for each character and team, and apply them from a full-screen menu.
+**Gear templates for Genshin Impact**
 
-## Open Reliquary
+Create weapon and artifact templates for your characters and teams, and apply them from a full-screen menu.
 
-- **Controller:** open the Paimon menu and press Y.
-- **Mouse:** open the Paimon menu and click the Reliquary tile.
+[Features](#features) · [Screenshots](#screenshots) · [Installation](#installation) · [Getting started](#getting-started) · [Applying](#applying) · [Building](#building)
 
-## Characters tab
+</div>
 
-Each character has their own templates. A slot left empty stays as it is when you apply the template.
+---
 
-| Action | Controller | Keyboard |
-|---|---|---|
-| Change character | LB, RB | Page Up, Page Down |
-| List all characters | L3 | C, or the All characters button |
-| Create new template | Y | N |
-| Save equipped gear as template | View | G |
-| Change an item | A on a slot | Enter on a slot |
-| Apply template | X | F |
-| Rename or delete | Menu | R |
+## Features
 
-## Character list
+| | |
+|--|--|
+| **Character templates** | Any number of named templates per character, each with a weapon and five artifacts. |
+| **Team templates** | One character template per member, so a change to that template reaches every team that uses it |
+| **Stat comparison** | Each template's stats next to the equipped gear's, with the difference for every stat |
+| **Item picker** | Filter weapons by secondary attribute and artifacts by set. Sort artifacts by up to three affixes. See who holds each item. |
+| **Safe applying** | Every change is listed before it happens, and Undo puts the old gear back |
 
-The list shows your party first, then the rest by level. The screen behind it follows the focused character, so you can see their templates before you choose.
+## Screenshots
 
-| Action | Controller | Keyboard or mouse |
-|---|---|---|
-| Move | Left stick, D-pad | Arrow keys, or the mouse wheel |
-| Open the character | A | Enter, or click the card |
-| Go back to the character you started on | B | Esc |
-| Filter by element and weapon | Y | N, or the funnel |
-| Change the sort (Level, Rarity, Element) | X | F, or the sort box |
-| Flip the order | Menu | R, or the arrows |
+<table>
+<tr>
+<td width="50%" valign="top">
+  <img src="assets/img-1.png" alt="Characters tab showing a template's weapon and five artifacts, with its stats compared with the equipped gear" width="100%">
+  <p align="center"><sub>A character template and its stats compared with the equipped gear</sub></p>
+</td>
+<td width="50%" valign="top">
+  <img src="assets/img-2.png" alt="Confirmation dialog listing the five artifacts that change when the template is applied" width="100%">
+  <p align="center"><sub>Every change is listed before the template is applied</sub></p>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+  <img src="assets/img-3.png" alt="Teams tab with four members, each with a character template, its items and total stats" width="100%">
+  <p align="center"><sub>A team template with one character template per party member</sub></p>
+</td>
+<td width="50%" valign="top">
+  <img src="assets/img-4.png" alt="Item picker with a grid of flowers and the selected artifact's stats and set effects" width="100%">
+  <p align="center"><sub>The item picker screen</sub></p>
+</td>
+</tr>
+</table>
 
-## Item picker
+## Installation
 
-| Action | Controller | Keyboard or mouse |
-|---|---|---|
-| Filter | Y | N, or the Filter button |
-| Sort artifacts | View | G, or the Sort button |
-| Show only unequipped items | X | F, or the button |
-| Use the item | A | Enter, or click the item |
+This mod requires a [custom build of MelonLoader](https://github.com/portra400nc/melon/releases) that supports Genshin.
 
-Weapons filter by secondary attribute and always sort by level. Artifacts filter by set, and sort by up to three affixes: artifacts with the most chosen affixes come first, then the highest value of each in the order you chose them. Main stats count. In a filter or sort panel, X keeps your choice, B or Esc puts it back, and L3 or Backspace clears it.
+1. Download the latest release from the [Releases](https://github.com/portra400nc/Reliquary/releases) page.
+2. Copy `Reliquary.dll` into MelonLoader's `Mods` folder.
 
-## Teams tab
+To update, replace the file with the one from the new release. To uninstall, delete it. Your templates stay in `UserData/Reliquary/`, saved per account.
 
-Press LT or RT to switch tabs (Q or E on a keyboard). Save the party's equipped gear as a team with Y. A team template names one character template per member, so a change to that template reaches every team that uses it. Choose a member with left and right, and their template with up and down.
+## Getting started
 
-Reliquary will not apply a team when two members need the same item.
+Open Paimon menu, then:
+
+- **Mouse:** click the Reliquary tile.
+- **Controller:** press <kbd>Y</kbd>.
+
+1. In the **Characters** tab, select **Save equipped gear as template**, or **Create new template** to start an empty one.
+2. Select a slot, such as **Flower**, to choose its item in the item picker, then select **Use in this template**.
+3. Select **Apply template**.
+4. In the **Teams** tab, select **Save party as team**. You can then specify each party member's gear template and apply all of them in one click.
 
 ## Applying
 
-Reliquary lists every change first. Equipping an item another character holds gives that character your old item, as in the game. Right after applying, press Y or click Undo to put the old gear back. Deleting a template asks first. Items you no longer own are skipped.
+Reliquary lists every change first. Equipping an item another character holds gives that character your old item, as in the game. Right after applying, select **Undo** to put the old gear back.
+
+- A team is not applied when two members need the same item.
+- Deleting a template asks first.
+- Items you no longer own are skipped.
 
 ## Limits
 
 - The comparison adds up the items' own stats. It leaves out set bonuses and the character's base stats.
-- The game's controller navigation does not reach the tile, so controllers use Y.
+- The game's controller navigation does not reach the tile, so controllers use <kbd>Y</kbd>.
 - Artifacts cannot be taken off, because the mod has no request for that.
 
-Templates are saved per account in `UserData/Reliquary/`.
+## Building
+
+You need the .NET 6 SDK or newer and a custom MelonLoader install whose `MelonLoader/net6` and `MelonLoader/Il2CppAssemblies` hold the references.
+
+```sh
+dotnet build Reliquary -c Release \
+  -p:MelonLoaderNet6=<game folder>/MelonLoader/net6 \
+  -p:Il2CppAssemblies=<game folder>/MelonLoader/Il2CppAssemblies
+```
+
+Copy `Reliquary/bin/Release/Reliquary.dll` to the game's `Mods` folder.
+
+The tests cover how templates are applied, the item picker's filters and sorting, and the scrolling. They need the .NET 9 SDK but no game files:
+
+```sh
+dotnet run --project Reliquary.Tests
+```
