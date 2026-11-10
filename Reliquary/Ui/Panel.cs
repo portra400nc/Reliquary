@@ -1646,7 +1646,7 @@ internal sealed partial class Panel
                     Fill(holder);
                     ItemCard(item, view, x, y, CardWidth, CardHeight, false, holder);
                     int target = i;
-                    Hit(rowCards, x, y, CardWidth, CardHeight, () => { pickerCursor = target; Pick(); }, Hover.Lift, Style.CardRadius, false, item, holder);
+                    Hit(rowCards, x, y, CardWidth, CardHeight, () => pickerCursor = target, Hover.Lift, Style.CardRadius, false, item, holder);
                 }
             }
             if (pickerCursor < pickerItems.Count)
