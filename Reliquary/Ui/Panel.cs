@@ -37,7 +37,10 @@ internal sealed partial class Panel
     private readonly MenuTile tile;
     private readonly Applier applier;
     private readonly Dictionary<PadButtons, float> repeats = [];
-    private readonly List<(RectTransform Rect, Action Click)> hits = [];
+    // Window is the scrolled window a hit was drawn in: a list draws rows beyond its window, hidden, which must not take
+    // clicks meant for what lies there.
+    private readonly List<(RectTransform Rect, RectTransform Window, Action Click)> hits = [];
+    private RectTransform hitWindow;
 
     private Library library = new();
     private string file = "";
@@ -2009,7 +2012,7 @@ internal sealed partial class Panel
     {
         RectTransform rect = Node("Hit", parent);
         TopLeft(rect, x, y, width, height);
-        hits.Add((rect, click));
+        hits.Add((rect, hitWindow, click));
     }
 
     // The Esc keycap and what it does, at the right end of the footer.

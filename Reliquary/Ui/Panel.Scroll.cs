@@ -69,7 +69,16 @@ internal sealed partial class Panel
         float view = list.State.View, offset = list.State.Offset;
         list.DrawnFrom = offset - list.Margin;
         list.DrawnTo = offset + view + list.Margin;
-        list.Draw(list.Content);
+        RectTransform outer = hitWindow;
+        hitWindow = list.Window;
+        try
+        {
+            list.Draw(list.Content);
+        }
+        finally
+        {
+            hitWindow = outer;
+        }
         PlaceContent(list);
     }
 
@@ -128,7 +137,8 @@ internal sealed partial class Panel
     private Action HitAt(Vector2 point)
     {
         for (int i = hits.Count - 1; i >= 0; i--)
-            if (hits[i].Rect && RectTransformUtility.RectangleContainsScreenPoint(hits[i].Rect, point, null))
+            if (hits[i].Rect && RectTransformUtility.RectangleContainsScreenPoint(hits[i].Rect, point, null)
+                && (hits[i].Window is not { } window || window && RectTransformUtility.RectangleContainsScreenPoint(window, point, null)))
                 return hits[i].Click;
         return null;
     }
