@@ -1638,13 +1638,15 @@ internal sealed partial class Panel
         detailScrollMax = 0f;
         if (pickerCursor < pickerItems.Count && gear.View(pickerItems[pickerCursor]) is { } shown)
         {
-            Box(parent, Side, 90f, Width, 400f, CardFill, Shapes.Card);
+            // The card reaches down to the button, which sits as far above the bottom bar as it does below the card.
+            const float ButtonTop = 740f - 14f - 42f, CardBottom = ButtonTop - 14f;
+            Box(parent, Side, 90f, Width, CardBottom - 90f, CardFill, Shapes.Card);
             Icon_(parent, shown, Side + 14f, 104f, 64f);
             Wrap(parent, shown.Name, Side + 88f, 104f, Width - 100f, 64f, 15, Style.Text);
             ulong? holder = gear.Holder(shown.Guid);
             bool elsewhere = holder is { } other && other != Current.Guid;
             const float Top = 176f;
-            float bottom = elsewhere ? 432f : 482f;
+            float bottom = CardBottom - (elsewhere ? 58f : 8f);
             RectTransform body = Clip(parent, "DetailBody", Side, Top, Width, bottom - Top);
             float y = Top + 4f;
             if (shown.Main is { } main)
@@ -1684,11 +1686,11 @@ internal sealed partial class Panel
             ScrollDetail(0f);
             if (elsewhere)
             {
-                Print(parent, $"Equipped by {gear.NameOf(holder.Value)}", Side + 14f, 440f, Width - 28f, 18f, 13, Warn, TextAnchor.MiddleLeft);
-                Print(parent, $"Applying gives {gear.NameOf(holder.Value)} {Current.Name}'s equipped {pickerSlot.ToString().ToLowerInvariant()}", Side + 14f, 462f, Width - 28f, 18f, 12, Style.Dim, TextAnchor.MiddleLeft);
+                Print(parent, $"Equipped by {gear.NameOf(holder.Value)}", Side + 14f, CardBottom - 50f, Width - 28f, 18f, 13, Warn, TextAnchor.MiddleLeft);
+                Print(parent, $"Applying gives {gear.NameOf(holder.Value)} {Current.Name}'s equipped {pickerSlot.ToString().ToLowerInvariant()}", Side + 14f, CardBottom - 28f, Width - 28f, 18f, 12, Style.Dim, TextAnchor.MiddleLeft);
             }
             Action pick = Pick;
-            Button_(parent, "Use in this template", "A", Side, 504f, Width, 42f, true, pick);
+            Button_(parent, "Use in this template", "A", Side, ButtonTop, Width, 42f, true, pick);
         }
         parent = board;
         Band(parent, 740f, 60f, Bar);
