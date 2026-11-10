@@ -99,3 +99,7 @@ The tests cover how templates are applied, the item picker's filters and sorting
 ```sh
 dotnet run --project Reliquary.Tests
 ```
+
+## License
+
+Reliquary is licensed under the [GNU General Public License v3.0](LICENSE).
