@@ -4,9 +4,9 @@ using Object = UnityEngine.Object;
 
 namespace Reliquary.Ui;
 
-// Short tweens for the panel's parts, in milliseconds of unscaled time. The panel rebuilds its canvas on every change,
-// so a tween drives the new build's parts and simply ends if they are destroyed. A press of any button finishes every
-// tween at once, so input never waits on one.
+// Short tweens for the panel's parts, in milliseconds of unscaled time. The panel redraws its canvas on every change,
+// reusing the parts in place, so a redraw first ends their tweens at the last frame (FinishUnder); a tween whose part is
+// destroyed simply ends. A press of any button finishes every tween at once, so input never waits on one.
 internal sealed class Motion
 {
     private sealed class Tween
@@ -49,6 +49,25 @@ internal sealed class Motion
         List<Tween> all = [.. tweens];
         tweens.Clear();
         foreach (Tween tween in all)
+        {
+            if (tween.Owner)
+                tween.Apply(1f);
+            tween.Done?.Invoke();
+        }
+    }
+
+    // Ends the tweens of parts under root at their last frame, for a redraw that is about to place those parts again.
+    public void FinishUnder(Transform root)
+    {
+        List<Tween> inside = [];
+        tweens.RemoveAll(tween =>
+        {
+            if (tween.Owner is not Component part || !part || !part.transform.IsChildOf(root))
+                return false;
+            inside.Add(tween);
+            return true;
+        });
+        foreach (Tween tween in inside)
         {
             if (tween.Owner)
                 tween.Apply(1f);

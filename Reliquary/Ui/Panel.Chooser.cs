@@ -18,7 +18,6 @@ internal sealed partial class Panel
     private static readonly Color PartyBar = Style.Hex(0xb9e45c);
 
     private readonly RosterQuery rosterQuery = new();
-    private readonly Dictionary<string, RawImage> pendingPortraits = [];
     private List<RosterEntry> roster = [];
     private int rosterCursor;
     private (int Avatar, int Template, int Slot, bool InSlots) chooserReturn;
@@ -38,7 +37,6 @@ internal sealed partial class Panel
         ulong keep = Current.Guid;
         roster = Roster.Apply(gear.Characters.Select(who => new RosterEntry(who.Guid, who.Level, who.Rarity, who.Element, who.Weapon, gear.Party.Contains(who.Guid))), rosterQuery);
         rosterCursor = Math.Max(0, roster.FindIndex(entry => entry.Guid == keep));
-        rosterTop = null;
         ShowFocused();
     }
 
@@ -60,7 +58,6 @@ internal sealed partial class Panel
         if (roster.Count == 0)
             return;
         rosterCursor = Math.Clamp(rosterCursor + by, 0, roster.Count - 1);
-        rosterTop = null;
         ShowFocused();
     }
 
@@ -82,7 +79,6 @@ internal sealed partial class Panel
 
     private void CloseChooser()
     {
-        pendingPortraits.Clear();
         Back();
     }
 
@@ -162,65 +158,60 @@ internal sealed partial class Panel
     }
 
     // One portrait a frame, set straight on its card, so the first open does not stall on loading them all.
-    private void LoadOnePortrait()
-    {
-        if (pendingPortraits.Count == 0)
-            return;
-        (string icon, RawImage portrait) = pendingPortraits.First();
-        pendingPortraits.Remove(icon);
-        if (!portrait)
-            return;
-        portrait.texture = icons.Small(icon, PortraitSize);
-        portrait.enabled = portrait.texture;
-    }
-
     private void DrawChooser(RectTransform parent)
     {
-        pendingPortraits.Clear();
         Cover(G("ChooserDim"), RosterDim);
-        parent.SetAsLastSibling();
+        Widgets.ToEnd(parent);
         LeftBand(parent, 0f, RosterWidth, Style.ReferenceHeight, RosterFill);
         Print(parent, $"Characters / {Current.Name}", RosterLeft, 30f, 380f, 24f, 14, Style.Cream, TextAnchor.MiddleLeft);
         if (roster.Count == 0)
             Print(parent, "No characters match", RosterLeft, 340f, 385f, 24f, 16, Style.Dim, TextAnchor.MiddleCenter);
-        int lastRow = (Math.Max(roster.Count, 1) - 1) / RosterColumns;
-        int firstRow = RosterFirstRow();
-        int first = firstRow * RosterColumns;
-        // A row that scrolled out of sight is drawn once more, so it can slide away under the window's edge.
-        int leaving = was != null && Base(was.Layer) == Layer.Chooser && Math.Abs(was.RosterFirst - firstRow) == 1 ? was.RosterFirst - firstRow : 0;
-        RectTransform grid = Clip(parent, "Roster", 0f, RosterTop - 2f, RosterWidth - 14f, RosterRows * (CardHeight + CardGapY) + 2f);
-        Scroll(parent, 0f, RosterTop - 2f, RosterWidth - 14f, RosterRows * (CardHeight + CardGapY) + 2f, CardHeight + CardGapY, ScrollRoster);
-        for (int localRow = leaving < 0 ? -1 : 0; localRow < RosterRows + (leaving > 0 ? 1 : 0); localRow++)
+        // The list scrolls in its window; rows near the window are drawn, and the focus frame moves with the cards.
+        const float Pitch = CardHeight + CardGapY, ListTop = RosterTop - 10f;
+        int rowCount = (roster.Count + RosterColumns - 1) / RosterColumns, cursorRow = rosterCursor / RosterColumns;
+        float view = RosterRows * Pitch + 8f, length = 10f + rowCount * Pitch + 4f;
+        bool firstShow = was == null || Base(was.Layer) != Layer.Chooser || was.RosterOrder != string.Join(",", roster.Take(40).Select(entry => entry.Guid));
+        Scrolled(rosterList, parent, "Roster", 0f, ListTop, RosterWidth - 14f, view, length, content =>
         {
-            RectTransform cards = Sub(grid, $"RosterRow{localRow + 1}");
-            for (int column = 0; column < RosterColumns; column++)
+            int seen = (int)(rosterList.State.Offset / Pitch);
+            for (int row = 0; row < rowCount; row++)
             {
-                int i = first + localRow * RosterColumns + column;
-                if (i < 0 || i >= roster.Count)
+                float y = RosterTop + row * Pitch;
+                if (!Drawn(rosterList, y - ListTop, y - ListTop + CardHeight))
                     continue;
-                float x = RosterLeft + column * (CardWidth + CardGapX), y = RosterTop + localRow * (CardHeight + CardGapY);
-                RosterCard(cards, roster[i], x, y, false);
-                int target = i;
-                if (localRow >= 0 && localRow < RosterRows)
+                RectTransform cards = Sub(content, $"RosterRow{row - seen + 1}");
+                for (int column = 0; column < RosterColumns; column++)
+                {
+                    int i = row * RosterColumns + column;
+                    if (i >= roster.Count)
+                        continue;
+                    float x = RosterLeft + column * (CardWidth + CardGapX);
+                    RosterCard(cards, roster[i], x, y, false);
+                    int target = i;
                     Hit(cards, x, y, CardWidth, CardHeight, () =>
                     {
                         rosterCursor = target;
                         ShowFocused();
                         ChooseCharacter();
                     });
+                }
             }
-        }
-        if (rosterCursor >= first && rosterCursor < first + RosterColumns * RosterRows)
+            if (rosterCursor < roster.Count)
+                FocusFrame("frame:roster", content, RosterLeft + (rosterCursor % RosterColumns) * (CardWidth + CardGapX), RosterTop + cursorRow * Pitch, CardWidth, CardHeight, 3f);
+        }, margin: 2f * Pitch, before: state => Follow(state, was != null && was.RosterCursor != rosterCursor, firstShow, 10f + cursorRow * Pitch, 10f + cursorRow * Pitch + CardHeight, Pitch));
+        if (rosterList.State.Max > 0f)
         {
-            int local = rosterCursor - first;
-            FocusFrame("frame:roster", parent, RosterLeft + (local % RosterColumns) * (CardWidth + CardGapX), RosterTop + (local / RosterColumns) * (CardHeight + CardGapY), CardWidth, CardHeight, 3f);
-        }
-        if (lastRow >= RosterRows)
-        {
-            float rows = lastRow + 1;
             Box(parent, TrackX, RosterTop, 4f, TrackHeight, Style.Hex(0xece5d8, 0.14f), Shapes.Bar);
-            Image thumb = Box(parent, TrackX, RosterTop + firstRow / rows * TrackHeight, 4f, RosterRows / rows * TrackHeight, Style.Hex(0xece5d8, 0.6f), Shapes.Bar);
-            Glide("thumb", thumb.rectTransform, TrackX, RosterTop + firstRow / rows * TrackHeight, 4f, RosterRows / rows * TrackHeight, 140f);
+            RectTransform thumb = Box(parent, TrackX, RosterTop, 4f, TrackHeight, Style.Hex(0xece5d8, 0.6f), Shapes.Bar).rectTransform;
+            rosterList.Moved = () =>
+            {
+                if (!thumb)
+                    return;
+                float max = rosterList.State.Max, height = Math.Max(24f, TrackHeight * view / length);
+                float at = Math.Clamp(rosterList.State.Offset / max, 0f, 1f);
+                TopLeft(thumb, TrackX, RosterTop + (TrackHeight - height) * at, 4f, height);
+            };
+            rosterList.Moved();
         }
         DrawRosterControls(parent);
         if (padLayout)
@@ -234,13 +225,6 @@ internal sealed partial class Panel
             EscHint(parent, "Leave");
     }
 
-    // The first row of the list in view, which keeps the cursor off the window's top row.
-    private int RosterFirstRow()
-    {
-        int last = Math.Max(0, (Math.Max(roster.Count, 1) - 1) / RosterColumns - RosterRows + 1);
-        return rosterTop is { } top ? Math.Clamp(top, 0, last) : Math.Max(0, Math.Min(rosterCursor / RosterColumns - 1, last));
-    }
-
     // Art on a rarity plate, with the element in the top left, the level on a light strip and lime edges on a party member.
     private void RosterCard(Transform parent, RosterEntry entry, float x, float y, bool focus)
     {
@@ -249,7 +233,7 @@ internal sealed partial class Panel
         Image art = Picture(parent, "Art", Shapes.RosterArt[Math.Clamp(entry.Rarity, 0, Shapes.RosterArt.Length - 1)], Style.White);
         art.type = Image.Type.Simple;
         TopLeft(art.rectTransform, x, y, CardWidth, CardWidth);
-        var portrait = Node("Portrait", parent).gameObject.AddComponent<RawImage>();
+        var portrait = Widgets.Get<RawImage>(Node("Portrait", parent).gameObject);
         portrait.raycastTarget = false;
         TopLeft(portrait.rectTransform, x, y, CardWidth, CardWidth);
         if (icons.HasSmall(who.Icon, PortraitSize))
@@ -258,10 +242,7 @@ internal sealed partial class Panel
             portrait.enabled = portrait.texture;
         }
         else
-        {
-            portrait.enabled = false;
-            pendingPortraits[who.Icon] = portrait;
-        }
+            QueuePortrait(portrait, who.Icon, null, PortraitSize);
         if (icons.Element(entry.Element) is { } element)
         {
             Image icon = Picture(parent, "Element", null, Style.White);

@@ -125,6 +125,66 @@ Same("Level", cycle.Sort.ToString(), "the sort cycles back to level");
 Same("False", new RosterQuery().Filtered.ToString(), "a new query filters nothing");
 Same("True", cryo.Filtered.ToString(), "a chosen element counts as a filter");
 
+// Scrolling: a 400-unit window over 1000 units of content.
+string Near(float value) => MathF.Round(value).ToString();
+ScrollState Fresh() { var state = new ScrollState(); state.Measure(400f, 1000f); return state; }
+void Run(ScrollState state, float from, float seconds) { for (float t = from; t <= from + seconds; t += 1f / 60f) state.Step(t); }
+
+var follow = Fresh();
+follow.BeginDrag(500f, 0f);
+follow.DragTo(380f, 0.1f);
+Same("120", Near(follow.Offset), "the content follows the drag exactly");
+follow.DragTo(500f, 0.2f);
+follow.DragTo(450f, 0.3f);
+follow.EndDrag(0.5f);
+Run(follow, 0.5f, 1f);
+Same("50", Near(follow.Offset), "a drag held still before release does not fling");
+
+var flick = Fresh();
+flick.BeginDrag(500f, 0f);
+flick.DragTo(480f, 0.01f);
+flick.DragTo(440f, 0.03f);
+flick.EndDrag(0.035f);
+Run(flick, 0.035f, 0.3f);
+float coasting = flick.Offset;
+Same("True", (coasting > 120f).ToString(), "a flick keeps going after release");
+Run(flick, 0.4f, 4f);
+Same("False", flick.Moving.ToString(), "a flick slows down and stops");
+Same("True", (flick.Offset > coasting && flick.Offset <= flick.Max).ToString(), "it stops further on and inside the content");
+
+var band = Fresh();
+band.BeginDrag(500f, 0f);
+band.DragTo(1500f, 0.1f);
+Same("True", (band.Offset < 0f && band.Offset > -400f).ToString(), "pulling past the start stretches less than the pull");
+band.EndDrag(0.4f);
+Run(band, 0.4f, 1.5f);
+Same("0", Near(band.Offset), "the stretch springs back to the start");
+
+// The Deck can take 50 ms a frame: a fast release past the start must still settle at the start, not fly on.
+var slow = Fresh();
+slow.BeginDrag(500f, 0f);
+slow.DragTo(560f, 0.05f);
+slow.DragTo(700f, 0.1f);
+slow.EndDrag(0.1f);
+for (float t = 0.15f; t < 3f; t += 0.05f)
+    slow.Step(t);
+Same("0", Near(slow.Offset), "a fast pull past the start springs back at 20 frames a second");
+
+var wheel = Fresh();
+wheel.Wheel(100f, 0f);
+wheel.Wheel(100f, 0.05f);
+Run(wheel, 0.05f, 0.5f);
+Same("200", Near(wheel.Offset), "wheel notches add up and ease there");
+wheel.Wheel(5000f, 1f);
+Run(wheel, 1f, 0.5f);
+Same("600", Near(wheel.Offset), "the wheel stops at the end of the content");
+
+var reveal = Fresh();
+reveal.Reveal(700f, 760f, 50f, 0f, ease: false);
+Same("410", Near(reveal.Offset), "a row below the window comes into view with its padding");
+reveal.Reveal(500f, 560f, 50f, 0f, ease: false);
+Same("410", Near(reveal.Offset), "a row already in view stays where it is");
+
 Console.WriteLine($"Reliquary passed {checks} checks");
 
 sealed class Fake(Dictionary<(ulong, Slot), ulong> equipped, HashSet<ulong> owned) : IGear

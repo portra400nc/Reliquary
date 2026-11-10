@@ -5,12 +5,17 @@ namespace Reliquary.Ui;
 
 // Builds the panel's parts from the style table, the shapes and the game's font, as CameraTools builds its own. The
 // canvas holds only plain graphics: Genshin cannot run custom MonoBehaviours, so the mod writes every value to them.
-internal sealed class Widgets(Font font)
+internal sealed partial class Widgets(Font font)
 {
+    // A node under parent: in a redraw, the previous drawing's node of this name (Widgets.Reuse.cs), else a new one.
     public static RectTransform Node(string name, Transform parent)
     {
+        if (Reusing && Reuse(name, parent) is { } reused)
+            return reused;
         var rect = new GameObject(name).AddComponent<RectTransform>();
         rect.SetParent(parent, false);
+        if (Reusing)
+            Track(rect, name, parent);
         return rect;
     }
 
@@ -37,13 +42,20 @@ internal sealed class Widgets(Font font)
     // A shape, or a plain rectangle without one. Nothing on the canvas takes the pointer.
     public static Image Picture(Transform parent, string name, Shape shape, Color color)
     {
-        var image = Node(name, parent).gameObject.AddComponent<Image>();
+        var image = Get<Image>(Node(name, parent).gameObject);
         if (shape != null)
         {
             image.sprite = Shapes.Get(shape);
             image.type = shape.Border > 0f ? Image.Type.Sliced : Image.Type.Simple;
             image.rectTransform.sizeDelta = V(shape.Width, shape.Height);
         }
+        else
+        {
+            // A reused image may carry the last drawing's shape.
+            image.sprite = null;
+            image.type = Image.Type.Simple;
+        }
+        image.preserveAspect = false;
         image.color = color;
         image.raycastTarget = false;
         return image;
@@ -51,7 +63,7 @@ internal sealed class Widgets(Font font)
 
     public Text Label(Transform parent, string name, string text, int size, Color color, TextAnchor alignment)
     {
-        var label = Node(name, parent).gameObject.AddComponent<Text>();
+        var label = Get<Text>(Node(name, parent).gameObject);
         label.font = font;
         label.fontSize = size;
         // The game's font is already heavy, and Unity fakes bold on a dynamic font by smearing it.
@@ -61,6 +73,7 @@ internal sealed class Widgets(Font font)
         label.horizontalOverflow = HorizontalWrapMode.Overflow;
         label.verticalOverflow = VerticalWrapMode.Overflow;
         label.supportRichText = false;
+        label.resizeTextForBestFit = false;
         label.raycastTarget = false;
         label.text = text;
         return label;
@@ -69,7 +82,7 @@ internal sealed class Widgets(Font font)
     // CSS's text-shadow blurs; uGUI's Shadow is a sharp copy one unit down.
     public static void DropShadow(Graphic graphic)
     {
-        var shadow = graphic.gameObject.AddComponent<Shadow>();
+        var shadow = Get<Shadow>(graphic.gameObject);
         shadow.effectColor = Style.TextShadow;
         shadow.effectDistance = V(0f, -1f);
     }
@@ -77,7 +90,7 @@ internal sealed class Widgets(Font font)
     // Lays children out left to right at their preferred widths, leaving their heights alone.
     public static HorizontalLayoutGroup Flow(GameObject target, float spacing, TextAnchor alignment)
     {
-        var group = target.AddComponent<HorizontalLayoutGroup>();
+        var group = Get<HorizontalLayoutGroup>(target);
         group.spacing = spacing;
         group.childAlignment = alignment;
         group.childControlWidth = true;
@@ -92,7 +105,7 @@ internal sealed class Widgets(Font font)
     {
         Shape shape = letter == null ? Shapes.Dpad : Shapes.Face;
         var rect = Picture(parent, letter ?? "Dpad", shape, Style.White).rectTransform;
-        var element = rect.gameObject.AddComponent<LayoutElement>();
+        var element = Get<LayoutElement>(rect.gameObject);
         element.preferredWidth = shape.Width;
         element.preferredHeight = shape.Height;
         if (letter != null)
@@ -107,7 +120,7 @@ internal sealed class Widgets(Font font)
         var group = Flow(image.gameObject, 0f, TextAnchor.MiddleCenter);
         group.padding.left = padding;
         group.padding.right = padding;
-        image.gameObject.AddComponent<LayoutElement>().minWidth = minWidth;
+        Get<LayoutElement>(image.gameObject).minWidth = minWidth;
         var label = Label(image.rectTransform, "Text", name, size, ink, TextAnchor.MiddleCenter);
         label.rectTransform.sizeDelta = V(0f, height);
         return (image, label);

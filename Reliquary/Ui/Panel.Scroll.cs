@@ -1,26 +1,42 @@
 using UnityEngine;
+using UnityEngine.UI;
 using static Reliquary.Ui.Widgets;
+using Object = UnityEngine.Object;
 
 namespace Reliquary.Ui;
 
-// The mouse, as in the game: the wheel or a drag with the left button scrolls the part under the pointer, and a click
-// acts when the button comes up without the pointer having moved. Each build registers its scrollable windows. A
-// window scrolled by the mouse stays where it was put, away from the controller's focus, until the focus moves.
+// Scrolling, as on iOS: every list keeps a continuous offset (ScrollState). A drag moves the content with the pointer,
+// a flick coasts and slows, the ends stretch and spring back, and the wheel eases by a step. The content node moves
+// every frame without a rebuild. A long list draws only the rows near its window and redraws just those rows when the
+// window moves past them. The controller's focus eases its row into view. A click acts on release, when the pointer
+// has barely moved.
 internal sealed partial class Panel
 {
-    // Rows moves a stepped list by whole rows (forward is down, or right across), Units moves a smooth one by canvas units.
-    private sealed record Scroller(RectTransform Rect, bool Across, float Step, Action<int> Rows, Action<float> Units);
+    private sealed class ScrollList(bool across, float wheelStep)
+    {
+        public readonly ScrollState State = new();
+        public readonly bool Across = across;
+        public readonly float WheelStep = wheelStep;
+        public RectTransform Window, Content;
+        public Vector2 Home;
+        public float Margin = float.PositiveInfinity, DrawnFrom, DrawnTo;
+        public Action<RectTransform> Draw;
+        // Runs whenever the content moves, for a scroll bar.
+        public Action Moved;
+        public bool Live => Content;
+    }
 
     private const float DragStart = 10f;
-    private const float DetailWheelStep = 40f;
 
-    private readonly List<Scroller> scrollers = [];
-    private int? stripTop, rosterTop, pickerTop, setTop, teamTop;
+    private readonly ScrollList strip = new(true, FaceStep * 3f), templateList = new(false, 66f), teamList = new(false, TeamRowHeight),
+        rosterList = new(false, CardHeight + CardGapY), pickerList = new(false, 154f), setList = new(false, 45f * 2f), detailList = new(false, 60f);
+    private ScrollList[] Lists => [strip, templateList, teamList, rosterList, pickerList, setList, detailList];
+
+    private readonly List<ScrollList> scrollers = [];
     private bool pressed, dragging;
-    private Vector2 pressAt, lastPoint;
-    private Scroller dragged;
+    private Vector2 pressAt;
+    private ScrollList dragged;
     private Action pressClick;
-    private float dragCarry;
 
     // An overlay takes the mouse from what lies under it.
     private void ClearInput()
@@ -29,24 +45,82 @@ internal sealed partial class Panel
         scrollers.Clear();
     }
 
-    private void Scroll(Transform parent, float x, float y, float width, float height, float step, Action<int> rows, bool across = false)
+    // A scrolled window at (x, y, width, height) over content of the given length, measured along the scroll axis from
+    // the window's start. draw places the content's parts in stage units as if unscrolled; a list with a margin draws
+    // only what lies within margin of the window, read from DrawnFrom and DrawnTo. Returns the content node.
+    private RectTransform Scrolled(ScrollList list, RectTransform parent, string name, float x, float y, float width, float height, float length, Action<RectTransform> draw, float margin = float.PositiveInfinity, Action<ScrollState> before = null)
     {
-        RectTransform rect = Node("Scroll", parent);
-        TopLeft(rect, x, y, width, height);
-        scrollers.Add(new Scroller(rect, across, step, rows, null));
+        RectTransform content = Clip(parent, name, x, y, width, height);
+        list.Window = content.parent.TryCast<RectTransform>();
+        list.Content = content;
+        list.Home = content.anchoredPosition;
+        list.Margin = margin;
+        list.Draw = draw;
+        list.Moved = null;
+        list.State.Measure(list.Across ? width : height, length);
+        before?.Invoke(list.State);
+        scrollers.Add(list);
+        DrawWindow(list);
+        return content;
     }
 
-    private void ScrollSmooth(Transform parent, float x, float y, float width, float height, Action<float> units)
+    private void DrawWindow(ScrollList list)
     {
-        RectTransform rect = Node("Scroll", parent);
-        TopLeft(rect, x, y, width, height);
-        scrollers.Add(new Scroller(rect, false, 1f, null, units));
+        float view = list.State.View, offset = list.State.Offset;
+        list.DrawnFrom = offset - list.Margin;
+        list.DrawnTo = offset + view + list.Margin;
+        list.Draw(list.Content);
+        PlaceContent(list);
     }
 
-    private Scroller ScrollerAt(Vector2 point)
+    private static void PlaceContent(ScrollList list)
+    {
+        float offset = list.State.Offset;
+        list.Content.anchoredPosition = list.Across ? V(list.Home.x - offset, list.Home.y) : V(list.Home.x, list.Home.y + offset);
+        list.Moved?.Invoke();
+    }
+
+    // Whether the content span [start, end], measured from the window's start, lies within what the list draws.
+    private static bool Drawn(ScrollList list, float start, float end) => end >= list.DrawnFrom && start <= list.DrawnTo;
+
+    // Eases the focus into view after the controller moved it, or puts it there at once when the list first shows.
+    private void Follow(ScrollState state, bool moved, bool first, float start, float end, float pad)
+    {
+        if (first)
+            state.Reveal(start, end, pad, Time.unscaledTime, ease: false);
+        else if (moved)
+            state.Reveal(start, end, pad, Time.unscaledTime);
+    }
+
+    // Each frame: the physics moves, the content follows, and a long list redraws its rows when the window leaves them.
+    private void UpdateScrolling(float now)
+    {
+        foreach (ScrollList list in Lists)
+        {
+            if (!list.Live)
+                continue;
+            if (list.State.Step(now) || list.State.Dragging)
+                PlaceContent(list);
+            float offset = list.State.Offset;
+            if (!float.IsPositiveInfinity(list.Margin) && (offset < list.DrawnFrom || offset + list.State.View > list.DrawnTo))
+            {
+                Widgets.BeginReuse(list.Content);
+                try
+                {
+                    DrawWindow(list);
+                }
+                finally
+                {
+                    Widgets.EndReuse();
+                }
+            }
+        }
+    }
+
+    private ScrollList ScrollerAt(Vector2 point)
     {
         for (int i = scrollers.Count - 1; i >= 0; i--)
-            if (scrollers[i].Rect && RectTransformUtility.RectangleContainsScreenPoint(scrollers[i].Rect, point, null))
+            if (scrollers[i].Window && RectTransformUtility.RectangleContainsScreenPoint(scrollers[i].Window, point, null))
                 return scrollers[i];
         return null;
     }
@@ -59,26 +133,27 @@ internal sealed partial class Panel
         return null;
     }
 
-    private void MouseInput()
+    // The pointer along a list's axis in canvas units, decreasing as the content is pulled forward.
+    private static float Along(ScrollList list, Vector2 point)
+    {
+        float scale = Math.Min(Screen.width / Style.ReferenceWidth, Screen.height / Style.ReferenceHeight);
+        return list.Across ? point.x / scale : -point.y / scale;
+    }
+
+    private void MouseInput(float now)
     {
         var point = new Vector2 { x = Input.mousePosition.x, y = Input.mousePosition.y };
         float wheel = Input.mouseScrollDelta.y;
-        if (wheel != 0f && !pressed && ScrollerAt(point) is { } turned)
-        {
-            if (turned.Units != null)
-                turned.Units(-wheel * DetailWheelStep);
-            else
-                turned.Rows(wheel > 0f ? -1 : 1);
-            dirty = true;
-        }
+        if (wheel != 0f && !dragging && ScrollerAt(point) is { } turned)
+            turned.State.Wheel(-MathF.Sign(wheel) * turned.WheelStep, now);
         if (Input.GetMouseButtonDown(0))
         {
             pressed = true;
             dragging = false;
-            pressAt = lastPoint = point;
+            pressAt = point;
             dragged = ScrollerAt(point);
-            pressClick = HitAt(point);
-            dragCarry = 0f;
+            // A press that stops a coasting list only stops it.
+            pressClick = dragged != null && dragged.State.Catch() ? null : HitAt(point);
             return;
         }
         if (!pressed)
@@ -86,15 +161,19 @@ internal sealed partial class Panel
         if (Input.GetMouseButton(0))
         {
             float moved = MathF.Sqrt((point.x - pressAt.x) * (point.x - pressAt.x) + (point.y - pressAt.y) * (point.y - pressAt.y));
-            if (!dragging && dragged != null && moved > DragStart)
+            if (!dragging && dragged != null && dragged.Live && moved > DragStart)
+            {
                 dragging = true;
-            if (dragging)
-                Drag(point);
-            lastPoint = point;
+                dragged.State.BeginDrag(Along(dragged, point), now);
+            }
+            if (dragging && dragged.Live)
+                dragged.State.DragTo(Along(dragged, point), now);
             return;
         }
         pressed = false;
-        if (!dragging && pressClick != null)
+        if (dragging)
+            dragged?.State.EndDrag(now);
+        else if (pressClick != null)
         {
             pressClick();
             dirty = true;
@@ -102,60 +181,28 @@ internal sealed partial class Panel
         dragging = false;
     }
 
-    // The content follows the pointer: pulling up shows what is further down, pulling left what is further right.
-    private void Drag(Vector2 point)
+    // Portraits not yet loaded load one per frame, so scrolling never waits on them. A fallback name is tried when the
+    // first has no icon, as for the circle portraits.
+    private readonly List<(RawImage Image, string Icon, string Fallback, int Size)> portraitQueue = [];
+
+    private void QueuePortrait(RawImage image, string icon, string fallback, int size)
     {
-        float scale = Math.Min(Screen.width / Style.ReferenceWidth, Screen.height / Style.ReferenceHeight);
-        float units = (dragged.Across ? lastPoint.x - point.x : point.y - lastPoint.y) / scale;
-        if (dragged.Units != null)
+        image.enabled = false;
+        portraitQueue.Add((image, icon, fallback, size));
+    }
+
+    private void LoadOnePortrait()
+    {
+        while (portraitQueue.Count > 0)
         {
-            dragged.Units(units);
+            var (image, icon, fallback, size) = portraitQueue[0];
+            portraitQueue.RemoveAt(0);
+            if (!image)
+                continue;
+            Texture texture = icons.Small(icon, size) ?? (fallback != null ? icons.Small(fallback, size) : null);
+            image.texture = texture;
+            image.enabled = texture;
             return;
         }
-        dragCarry += units;
-        int rows = (int)(dragCarry / dragged.Step);
-        if (rows == 0)
-            return;
-        dragCarry -= rows * dragged.Step;
-        dragged.Rows(rows);
-        dirty = true;
-    }
-
-    // The strip moves without changing who is chosen; a click on a face chooses them.
-    private void ScrollStrip(int faces)
-    {
-        int count = gear.Characters.Count;
-        if (count > 9)
-            stripTop = Math.Clamp(StripStart() + faces, 0, count - 9);
-    }
-
-    private void ScrollRoster(int rows)
-    {
-        int last = Math.Max(0, (Math.Max(roster.Count, 1) - 1) / RosterColumns - RosterRows + 1);
-        rosterTop = Math.Clamp(RosterFirstRow() + rows, 0, last);
-    }
-
-    private void ScrollPicker(int rows)
-    {
-        int last = Math.Max(0, (pickerItems.Count - 1) / PickerColumns - PickerRows + 1);
-        pickerTop = Math.Clamp(PickerFirst() + rows, 0, last);
-    }
-
-    private void ScrollSets(int rows)
-    {
-        int last = Math.Max(0, (setRows.Count + 1) / 2 - SetRowsShown);
-        setTop = Math.Clamp(SetFirstRow() + rows, 0, last);
-    }
-
-    private void ScrollTeams(int rows)
-    {
-        int last = Math.Max(0, library.Teams.Count - TeamRowsShown);
-        teamTop = Math.Clamp(TeamFirstRow() + rows, 0, last);
-    }
-
-    private int TeamFirstRow()
-    {
-        int count = library.Teams.Count, last = Math.Max(0, count - TeamRowsShown);
-        return teamTop is { } top ? Math.Clamp(top, 0, last) : Math.Max(0, Math.Min(team - TeamRowsShown + 1, last));
     }
 }

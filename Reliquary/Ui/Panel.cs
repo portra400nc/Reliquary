@@ -55,8 +55,6 @@ internal sealed partial class Panel
     private int pickerCursor;
     // The picker's item details scroll below the item's name; the offset resets for each new item.
     private ulong detailItem;
-    private float detailScroll, detailScrollMax, detailBaseY, detailTrack, detailView, detailThumbX;
-    private RectTransform detailBody, detailThumb;
     private float frameTime;
     private readonly PickerQuery weaponQuery = new();
     private readonly PickerQuery artifactQuery = new();
@@ -106,6 +104,7 @@ internal sealed partial class Panel
             {
                 motion.Update(now);
                 Breathe(now);
+                UpdateScrolling(now);
             }
             if (closing)
                 return;
@@ -181,7 +180,6 @@ internal sealed partial class Panel
         avatar = Math.Max(0, gear.Characters.ToList().FindIndex(character => character.Guid == active));
         template = slotIndex = member = 0;
         inSlots = false;
-        stripTop = rosterTop = pickerTop = setTop = teamTop = null;
         tab = Tab.Characters;
         layer = Layer.Main;
         open = dirty = true;
@@ -263,6 +261,7 @@ internal sealed partial class Panel
         if (root)
             Object.Destroy(root);
         root = content = null;
+        Widgets.ForgetAll();
         backdrop.Release();
         icons.ForgetElements();
         Pad.Settle();
@@ -299,7 +298,7 @@ internal sealed partial class Panel
             motion.FinishAll();
         if (applier.Busy)
             return;
-        MouseInput();
+        MouseInput(now);
         switch (layer)
         {
             case Layer.Main:
@@ -436,7 +435,7 @@ internal sealed partial class Panel
     private void PickerInput(float now)
     {
         int Columns = PickerColumns;
-        ScrollDetail(-Pad.RightY * DetailStickSpeed * frameTime);
+        detailList.State.Nudge(-Pad.RightY * DetailStickSpeed * frameTime);
         if (Repeat(PadButtons.DpadLeft, KeyCode.LeftArrow, now))
             MovePicker(-1);
         else if (Repeat(PadButtons.DpadRight, KeyCode.RightArrow, now))
@@ -582,7 +581,6 @@ internal sealed partial class Panel
     {
         tab = next;
         inSlots = false;
-        teamTop = null;
         if (tab == Tab.Teams)
         {
             int deployed = library.Teams.FindIndex(candidate => candidate.Members.Select(m => m.Avatar).OrderBy(g => g).SequenceEqual(gear.Party.OrderBy(g => g)));
@@ -596,7 +594,6 @@ internal sealed partial class Panel
     private void MoveAvatar(int by)
     {
         avatar = (avatar + by + gear.Characters.Count) % gear.Characters.Count;
-        stripTop = null;
         template = 0;
         inSlots = false;
         dirty = true;
@@ -653,7 +650,6 @@ internal sealed partial class Panel
     {
         if (library.Teams.Count > 0)
             team = (team + by + library.Teams.Count) % library.Teams.Count;
-        teamTop = null;
         member = 0;
         dirty = true;
     }
@@ -716,7 +712,6 @@ internal sealed partial class Panel
         if (pickerSlot != Slot.Weapon)
             query.Sort.AddRange(SortList());
         pickerItems = [.. Picking.Apply(pickerSource, query).Select(item => item.Guid)];
-        pickerTop = null;
         pickerCursor = Math.Clamp(pickerCursor, 0, Math.Max(0, pickerItems.Count - 1));
     }
 
@@ -730,7 +725,6 @@ internal sealed partial class Panel
     private void OpenFilter()
     {
         panelCursor = 0;
-        setTop = null;
         if (pickerSlot == Slot.Weapon)
         {
             savedChoice = [.. weaponQuery.Secondary];
@@ -761,7 +755,6 @@ internal sealed partial class Panel
     {
         if (count > 0)
             panelCursor = wrap ? (panelCursor + by + count) % count : Math.Clamp(panelCursor + by, 0, count - 1);
-        setTop = null;
         dirty = true;
     }
 
@@ -816,7 +809,6 @@ internal sealed partial class Panel
         if (pickerItems.Count == 0)
             return;
         pickerCursor = Math.Clamp(pickerCursor + by, 0, pickerItems.Count - 1);
-        pickerTop = null;
         dirty = true;
     }
 
@@ -1025,22 +1017,41 @@ internal sealed partial class Panel
         LeaveMotion(now);
         RememberGlides();
         ClearInput();
+        // The last build's nodes are drawn again in place, so their animations end where they were going.
         if (content)
-            Object.Destroy(content);
+            motion.FinishUnder(content.transform);
+        focusGlows.Clear();
         groups.Clear();
         parts.Clear();
         slotRects.Clear();
         marks.Clear();
-        content = Node("Content", root.transform).gameObject;
+        if (!content)
+            content = Node("Content", root.transform).gameObject;
         RectTransform screen = content.GetComponent<RectTransform>();
         Fill(screen);
+        Widgets.BeginReuse(screen);
+        try
+        {
+            Draw(screen);
+        }
+        finally
+        {
+            Widgets.EndReuse();
+        }
+        ArriveMotion(now);
+        PlaceGhosts();
+        was = now;
+    }
+
+    private void Draw(RectTransform screen)
+    {
         backdropShown = backdrop.Picture != null;
         if (backdrop.Picture is { } blurred)
         {
             RectTransform back = Node("Back", screen);
             Fill(back);
             groups["Back"] = back;
-            var picture = Node("Backdrop", back).gameObject.AddComponent<RawImage>();
+            var picture = Widgets.Get<RawImage>(Node("Backdrop", back).gameObject);
             picture.texture = blurred;
             picture.color = Style.White;
             picture.raycastTarget = false;
@@ -1091,9 +1102,6 @@ internal sealed partial class Panel
         if (layer == Layer.Delete) DrawDelete(G("Prompt"));
         if (toastUntil != 0f)
             DrawToast(G("Toast"));
-        ArriveMotion(now);
-        PlaceGhosts();
-        was = now;
     }
 
     // The stage is 800 units tall and as wide as the screen, never narrower than 1280. On a screen wider than 16:10,
@@ -1165,42 +1173,28 @@ internal sealed partial class Panel
         if (padLayout)
             Mark(parent, "RB", rb, 25f);
         int count = gear.Characters.Count;
-        float last = rb - 10f - FaceSize, first = last - (Shown - 1) * FaceStep;
-        // The faces sit in a window, so when the strip moves by one the face leaving it slides out of sight.
-        RectTransform faces = Clip(parent, "Faces", first - 6f, 8f, last + FaceSize - first + 12f, 66f);
-        Scroll(parent, first - 6f, 8f, last + FaceSize - first + 12f, 66f, FaceStep, ScrollStrip, across: true);
-        int start = StripStart(), leaving = was != null && was.Layer == layer && Math.Abs(was.StripStart - start) == 1 ? was.StripStart - start : 0;
-        for (int i = leaving < 0 ? -1 : 0; i < Math.Min(Shown, count) + (leaving > 0 ? 1 : 0); i++)
+        float last = rb - 10f - FaceSize, first = last - (Shown - 1) * FaceStep, windowX = first - 6f;
+        // Every character in one row that scrolls; the faces near the window are drawn, the rest as it moves.
+        bool firstShow = was == null || was.Layer != layer || was.Tab != tab;
+        Scrolled(strip, parent, "Faces", windowX, 8f, last + FaceSize - first + 12f, 66f, count * FaceStep - (FaceStep - FaceSize) + 12f, faces =>
         {
-            int index = start >= 0 ? start + i : (avatar + i - Math.Min(Shown / 2, avatar) + count) % count;
-            if (index < 0 || index >= count)
-                continue;
-            Character who = gear.Characters[index];
-            float at = first + i * FaceStep;
-            Face(faces, who, at, 16f, FaceSize, false);
-            if (index == avatar)
+            for (int index = 0; index < count; index++)
             {
-                Image line = Box(parent, at + 4f, 16f + FaceSize + 4f, FaceSize - 8f, 3f, Style.Cream, null);
-                Glide("faceline", line.rectTransform, at + 4f, 16f + FaceSize + 4f, FaceSize - 8f, 3f, CharacterMs);
+                float at = first + index * FaceStep;
+                if (!Drawn(strip, at - windowX, at - windowX + FaceSize))
+                    continue;
+                Face(faces, gear.Characters[index], at, 16f, FaceSize, false, lazy: true);
+                if (index == avatar)
+                {
+                    Image line = Box(faces, at + 4f, 16f + FaceSize + 4f, FaceSize - 8f, 3f, Style.Cream, null);
+                    Glide("faceline", line.rectTransform, at + 4f, 16f + FaceSize + 4f, FaceSize - 8f, 3f, CharacterMs);
+                }
+                int target = index;
+                Hit(faces, at, 16f, FaceSize, FaceSize, () => { avatar = target; template = 0; inSlots = false; });
             }
-            int target = index;
-            if (i >= 0 && i < Shown)
-                Hit(parent, at, 16f, FaceSize, FaceSize, () => { avatar = target; template = 0; inSlots = false; });
-        }
+        }, margin: 3f * FaceStep, before: state => Follow(state, was != null && was.Avatar != avatar, firstShow, avatar * FaceStep, avatar * FaceStep + FaceSize + 12f, 4f * FaceStep));
         if (padLayout)
             Mark(parent, "LB", first - 10f - 30f, 25f);
-    }
-
-    // The first character in the strip's window of nine, or -1 when everyone fits and the strip wraps around instead.
-    private int StripStart()
-    {
-        const int Shown = 9;
-        int count = gear.Characters.Count;
-        if (count <= Shown)
-            return -1;
-        if (stripTop is { } top)
-            return Math.Clamp(top, 0, count - Shown);
-        return avatar < Shown / 2 ? 0 : avatar >= count - Shown / 2 ? count - Shown : avatar - Shown / 2;
     }
 
     // Returns the label's width, which the underline spans.
@@ -1223,17 +1217,28 @@ internal sealed partial class Panel
         LeftBand(side, 74f, 276f, 666f, Bar);
         RectTransform rows = Sub(side, "Rows");
         List<CharacterTemplate> list = Templates;
-        float y = 80f;
-        for (int i = 0; i < list.Count && y < 590f; i++)
+        // The rows scroll in the sidebar above its buttons; each row is as tall as its notes need.
+        var tops = new List<float>();
+        float length = 6f;
+        foreach (CharacterTemplate item in list)
         {
-            CharacterTemplate item = list[i];
-            float height = DrawTemplateRow(rows, item, y, i == template && !inSlots ? Selection.Focus : i == template ? Selection.Current : Selection.None);
-            int target = i;
-            Hit(rows, 0f, y, 276f, height, () => { template = target; inSlots = false; });
-            y += height;
+            tops.Add(length);
+            length += TemplateNote(item).Item1.Length > 0 ? 66f : 48f;
         }
-        if (list.Count == 0)
-            Print(rows, "No templates yet", 28f, 96f, 230f, 20f, 13, Style.Dim, TextAnchor.MiddleLeft);
+        bool firstShow = was == null || was.Layer != layer || was.Tab != tab || was.Avatar != avatar;
+        float selectedTop = template < tops.Count ? tops[template] : 0f, selectedEnd = template + 1 < tops.Count ? tops[template + 1] : length;
+        Scrolled(templateList, rows, "Templates", 0f, SideListTop, 276f, SideListBottom - SideListTop, length + 6f, content =>
+        {
+            for (int i = 0; i < list.Count; i++)
+            {
+                float y = SideListTop + tops[i];
+                float height = DrawTemplateRow(content, list[i], y, i == template && !inSlots ? Selection.Focus : i == template ? Selection.Current : Selection.None);
+                int target = i;
+                Hit(content, 0f, y, 276f, height, () => { template = target; inSlots = false; });
+            }
+            if (list.Count == 0)
+                Print(content, "No templates yet", 28f, 96f, 230f, 20f, 13, Style.Dim, TextAnchor.MiddleLeft);
+        }, before: state => Follow(state, was != null && was.Template != template, firstShow, selectedTop, selectedEnd, 24f));
         Action create = Create, saveEquipped = SaveEquipped;
         Button_(side, "Create new template", "Y", 14f, 640f, 248f, 40f, true, create);
         Button_(side, "Save equipped gear as template", "View", 14f, 688f, 248f, 40f, false, saveEquipped);
@@ -1449,6 +1454,8 @@ internal sealed partial class Panel
 
     // The team templates in the sidebar like the character templates, and the chosen team's members beside it.
     private const int TeamRowsShown = 9;
+    // The sidebar's lists scroll between the top bar and the sidebar's buttons.
+    private const float SideListTop = 74f, SideListBottom = 632f;
     private const float TeamRowHeight = 64f, MemberTop = 128f, MemberHeight = 516f, MemberGap = 12f;
 
     private void DrawTeams(RectTransform parent)
@@ -1458,12 +1465,15 @@ internal sealed partial class Panel
         LeftBand(side, 74f, 276f, 666f, Bar);
         RectTransform rows = Sub(side, "Rows"), main = G("Main"), foot = G("Foot");
         int count = library.Teams.Count;
-        int first = TeamFirstRow();
-        Scroll(rows, 0f, 80f, 276f, TeamRowsShown * TeamRowHeight, TeamRowHeight, ScrollTeams);
-        for (int i = Math.Max(0, first); i < count && i < first + TeamRowsShown; i++)
-            DrawTeamRow(rows, library.Teams[i], i, 80f + (i - first) * TeamRowHeight);
-        if (count == 0)
-            Print(rows, "No team templates yet", 28f, 96f, 230f, 20f, 13, Style.Dim, TextAnchor.MiddleLeft);
+        bool firstShow = was == null || was.Layer != layer || was.Tab != tab;
+        // The team list scrolls down to just above its one button.
+        Scrolled(teamList, rows, "Teams", 0f, SideListTop, 276f, 680f - SideListTop, 6f + count * TeamRowHeight + 6f, content =>
+        {
+            for (int i = 0; i < count; i++)
+                DrawTeamRow(content, library.Teams[i], i, SideListTop + 6f + i * TeamRowHeight);
+            if (count == 0)
+                Print(content, "No team templates yet", 28f, 96f, 230f, 20f, 13, Style.Dim, TextAnchor.MiddleLeft);
+        }, before: state => Follow(state, was != null && was.Team != team, firstShow, 6f + team * TeamRowHeight, 6f + (team + 1) * TeamRowHeight, 24f));
         Action save = SaveParty;
         Button_(side, "Save party as team", "Y", 14f, 688f, 248f, 40f, true, save);
         parent = main;
@@ -1602,48 +1612,41 @@ internal sealed partial class Panel
         Fit(parent, PickerState(), 28f, 80f, 830f + wide, 20f, 13, Style.Dim);
         if (pickerItems.Count == 0)
             Print(parent, "No items match", 28f, 340f, 830f + wide, 24f, 16, Style.Dim, TextAnchor.MiddleCenter);
-        int firstRow = PickerFirst(), first = firstRow * Columns;
-        // A row that scrolled out of sight is drawn once more, so it can slide away under the window's edge.
-        int leaving = was != null && Base(was.Layer) == Layer.Picker && Math.Abs(was.PickerFirst - firstRow) == 1 ? was.PickerFirst - firstRow : 0;
-        RectTransform grid = Clip(parent, "Grid", 0f, 98f, Style.ReferenceWidth + wide, Rows * (CardHeight + Gap) + 2f);
-        Scroll(parent, 0f, 98f, 28f + Columns * (CardWidth + Gap), Rows * (CardHeight + Gap) + 2f, CardHeight + Gap, ScrollPicker);
-        // Who holds an item goes on a layer above the focus frame, which would otherwise cross their portrait.
-        var holderRows = new List<RectTransform>();
-        for (int localRow = leaving < 0 ? -1 : 0; localRow < Rows + (leaving > 0 ? 1 : 0); localRow++)
+        // The grid scrolls in its window; rows near the window are drawn, and redrawn as it moves. The focus frame and,
+        // above it, who holds each item move with the cards.
+        // The window starts below the filter line and reaches a little below the cards for the focus glow.
+        const float Pitch = CardHeight + Gap, GridTop = 100f;
+        int rowCount = (pickerItems.Count + Columns - 1) / Columns, cursorRow = pickerCursor / Columns;
+        bool firstShow = was == null || Base(was.Layer) != Layer.Picker || was.PickerOrder != string.Join(",", pickerItems.Take(40));
+        Scrolled(pickerList, parent, "Grid", 0f, GridTop, Style.ReferenceWidth + wide, Rows * Pitch + 10f, 6f + rowCount * Pitch + 8f, content =>
         {
-            RectTransform cards = Sub(grid, $"PickerRow{localRow + 1}");
-            RectTransform holders = Node($"Holders{localRow + 1}", cards);
-            holderRows.Add(holders);
-            for (int column = 0; column < Columns; column++)
+            RectTransform cards = Sub(content, "Cards"), holders = Sub(content, "Holders");
+            int seen = (int)(pickerList.State.Offset / Pitch);
+            for (int row = 0; row < rowCount; row++)
             {
-                int i = first + localRow * Columns + column;
-                if (i < 0 || i >= pickerItems.Count || gear.View(pickerItems[i]) is not { } view)
+                float y = 106f + row * Pitch;
+                if (!Drawn(pickerList, y - GridTop, y - GridTop + CardHeight))
                     continue;
-                float x = 28f + column * (CardWidth + Gap), y = 106f + localRow * (CardHeight + Gap);
-                ItemCard(cards, view, x, y, CardWidth, CardHeight, false, holders);
-                int target = i;
-                if (localRow >= 0 && localRow < Rows)
-                    Hit(cards, x, y, CardWidth, CardHeight, () => { pickerCursor = target; Pick(); });
+                RectTransform rowCards = Sub(cards, $"PickerRow{row - seen + 1}"), rowHolders = Sub(holders, $"Holders{row - seen + 1}");
+                for (int column = 0; column < Columns; column++)
+                {
+                    int i = row * Columns + column;
+                    if (i >= pickerItems.Count || gear.View(pickerItems[i]) is not { } view)
+                        continue;
+                    float x = 28f + column * (CardWidth + Gap);
+                    ItemCard(rowCards, view, x, y, CardWidth, CardHeight, false, rowHolders);
+                    int target = i;
+                    Hit(rowCards, x, y, CardWidth, CardHeight, () => { pickerCursor = target; Pick(); });
+                }
             }
-        }
-        if (pickerCursor >= first && pickerCursor < first + Columns * Rows)
-        {
-            int local = pickerCursor - first;
-            FocusFrame("frame:picker", parent, 28f + (local % Columns) * (CardWidth + Gap), 106f + (local / Columns) * (CardHeight + Gap), CardWidth, CardHeight, Style.CardRadius);
-        }
-        RectTransform portraits = Clip(parent, "GridHolders", 0f, 98f, Style.ReferenceWidth + wide, Rows * (CardHeight + Gap) + 2f);
-        foreach (RectTransform holders in holderRows)
-        {
-            holders.SetParent(portraits, false);
-            Fill(holders);
-            groups[holders.name] = holders;
-        }
+            if (pickerCursor < pickerItems.Count)
+                FocusFrame("frame:picker", content, 28f + (pickerCursor % Columns) * (CardWidth + Gap), 106f + cursorRow * Pitch, CardWidth, CardHeight, Style.CardRadius);
+            Widgets.ToEnd(holders);
+        }, margin: 2f * Pitch, before: state => Follow(state, was != null && was.PickerCursor != pickerCursor, firstShow, 6f + cursorRow * Pitch, 6f + cursorRow * Pitch + CardHeight, Pitch));
         float Side = 878f + wide;
         const float Width = 378f;
         RectTransform board = parent;
         parent = Sub(parent, "Detail");
-        detailBody = detailThumb = null;
-        detailScrollMax = 0f;
         if (pickerCursor < pickerItems.Count && gear.View(pickerItems[pickerCursor]) is { } shown)
         {
             // The card reaches down to the button, which sits as far above the bottom bar as it does below the card.
@@ -1655,44 +1658,54 @@ internal sealed partial class Panel
             bool elsewhere = holder is { } other && other != Current.Guid;
             const float Top = 176f;
             float bottom = CardBottom - (elsewhere ? 58f : 8f);
-            RectTransform body = Clip(parent, "DetailBody", Side, Top, Width, bottom - Top);
-            ScrollSmooth(parent, Side, Top, Width, bottom - Top, ScrollDetail);
-            float y = Top + 4f;
-            if (shown.Main is { } main)
+            // The stats and set effects scroll under the item's name, from the top again for each new item.
+            bool newItem = shown.Guid != detailItem;
+            detailItem = shown.Guid;
+            float view = bottom - Top, thumbX = Side + Width - Style.ThumbRight - Style.ThumbWidth;
+            RectTransform thumb = null;
+            Scrolled(detailList, parent, "DetailBody", Side, Top, Width, view, newItem ? 0f : detailList.State.Content, body =>
             {
-                Print(body, main.Label, Side + 14f, y, 220f, 20f, 14, Style.Cream, TextAnchor.MiddleLeft);
-                Print(body, Stats.Format(main), Side + 14f, y, Width - 28f, 20f, 14, Style.Cream, TextAnchor.MiddleRight);
-                y += 24f;
-            }
-            Print(body, pickerSlot == Slot.Weapon ? $"Level {shown.Level}, Refinement {shown.Refinement}" : $"Level {shown.Level}", Side + 14f, y, Width - 28f, 18f, 12, Style.Dim, TextAnchor.MiddleLeft);
-            y += 28f;
-            foreach (ItemStat stat in shown.Subs)
+                float y = Top + 4f;
+                if (shown.Main is { } main)
+                {
+                    Print(body, main.Label, Side + 14f, y, 220f, 20f, 14, Style.Cream, TextAnchor.MiddleLeft);
+                    Print(body, Stats.Format(main), Side + 14f, y, Width - 28f, 20f, 14, Style.Cream, TextAnchor.MiddleRight);
+                    y += 24f;
+                }
+                Print(body, pickerSlot == Slot.Weapon ? $"Level {shown.Level}, Refinement {shown.Refinement}" : $"Level {shown.Level}", Side + 14f, y, Width - 28f, 18f, 12, Style.Dim, TextAnchor.MiddleLeft);
+                y += 28f;
+                foreach (ItemStat stat in shown.Subs)
+                {
+                    Print(body, stat.Label, Side + 14f, y, 220f, 18f, 13, Style.Dim, TextAnchor.MiddleLeft);
+                    Print(body, Stats.Format(stat), Side + 14f, y, Width - 28f, 18f, 13, Style.Dim, TextAnchor.MiddleRight);
+                    y += 22f;
+                }
+                if (pickerSlot != Slot.Weapon && shown.Set != 0)
+                {
+                    Print(body, ArtifactSets.Name(shown.Set), Side + 14f, y + 8f, Width - 28f, 20f, 14, Style.SetName, TextAnchor.MiddleLeft);
+                    y += 34f;
+                    foreach (string piece in ArtifactSets.Bonuses(shown.Set))
+                        y += Paragraph(body, piece, Side + 14f, y, Width - 34f, 12, Style.Dim) + 8f;
+                }
+                detailList.State.Measure(view, y - Top);
+            }, before: state =>
             {
-                Print(body, stat.Label, Side + 14f, y, 220f, 18f, 13, Style.Dim, TextAnchor.MiddleLeft);
-                Print(body, Stats.Format(stat), Side + 14f, y, Width - 28f, 18f, 13, Style.Dim, TextAnchor.MiddleRight);
-                y += 22f;
-            }
-            if (pickerSlot != Slot.Weapon && shown.Set != 0)
+                if (newItem)
+                    state.Jump(0f);
+            });
+            if (detailList.State.Max > 0f)
             {
-                Print(body, ArtifactSets.Name(shown.Set), Side + 14f, y + 8f, Width - 28f, 20f, 14, Style.SetName, TextAnchor.MiddleLeft);
-                y += 34f;
-                foreach (string piece in ArtifactSets.Bonuses(shown.Set))
-                    y += Paragraph(body, piece, Side + 14f, y, Width - 34f, 12, Style.Dim) + 8f;
+                thumb = Box(parent, thumbX, Top, Style.ThumbWidth, Style.ThumbMin, Style.Thumb, Shapes.Bar).rectTransform;
+                detailList.Moved = () =>
+                {
+                    if (!thumb)
+                        return;
+                    float max = detailList.State.Max, height = Math.Max(Style.ThumbMin, view * view / (view + max));
+                    float at = max > 0f ? Math.Clamp(detailList.State.Offset / max, 0f, 1f) : 0f;
+                    TopLeft(thumb, thumbX, Top + (view - height) * at, Style.ThumbWidth, height);
+                };
+                detailList.Moved();
             }
-            if (shown.Guid != detailItem)
-            {
-                detailItem = shown.Guid;
-                detailScroll = 0f;
-            }
-            detailBody = body;
-            detailBaseY = body.anchoredPosition.y;
-            detailView = bottom - Top;
-            detailTrack = Top;
-            detailScrollMax = Math.Max(0f, y - bottom);
-            detailThumbX = Side + Width - Style.ThumbRight - Style.ThumbWidth;
-            if (detailScrollMax > 0f)
-                detailThumb = Box(parent, detailThumbX, Top, Style.ThumbWidth, Style.ThumbMin, Style.Thumb, Shapes.Bar).rectTransform;
-            ScrollDetail(0f);
             if (elsewhere)
             {
                 Print(parent, $"Equipped by {gear.NameOf(holder.Value)}", Side + 14f, CardBottom - 50f, Width - 28f, 18f, 13, Warn, TextAnchor.MiddleLeft);
@@ -1741,14 +1754,6 @@ internal sealed partial class Panel
         }
     }
 
-    // The first row of items the picker shows, which keeps the cursor off the window's top and bottom rows.
-    private int PickerFirst()
-    {
-        int Columns = PickerColumns;
-        int row = pickerCursor / Columns, last = Math.Max(0, (pickerItems.Count - 1) / Columns - PickerRows + 1);
-        return pickerTop is { } top ? Math.Clamp(top, 0, last) : Math.Max(0, Math.Min(row - 1, last));
-    }
-
     private string PickerState()
     {
         var filters = new List<string>();
@@ -1790,7 +1795,7 @@ internal sealed partial class Panel
     private void DrawPanelFrame(RectTransform parent, string title, string section, string hint)
     {
         Cover(G("PanelDim"), Style.Hex(0x060a14, 0.5f));
-        parent.SetAsLastSibling();
+        Widgets.ToEnd(parent);
         LeftBand(parent, 0f, 392f, 800f, Style.Hex(0x202938, 0.985f));
         Print(parent, title, 22f, 34f, 340f, 26f, 18, Style.Cream, TextAnchor.MiddleLeft);
         Box(parent, 16f, 70f, 360f, 1f, Style.Hex(0xd3bc8e, 0.3f), null);
@@ -1837,13 +1842,6 @@ internal sealed partial class Panel
         Hit(parent, x, y, width, 40f, click);
     }
 
-    // The first row of sets in view, which keeps the cursor near the middle of the list.
-    private int SetFirstRow()
-    {
-        int last = Math.Max(0, (setRows.Count + 1) / 2 - SetRowsShown);
-        return setTop is { } top ? Math.Clamp(top, 0, last) : Math.Max(0, Math.Min(panelCursor / 2 - SetRowsShown / 2, last));
-    }
-
     private const int SetRowsShown = 14;
 
     private void DrawSetFilter(RectTransform parent)
@@ -1855,44 +1853,48 @@ internal sealed partial class Panel
         Print(parent, "Artifact set filter", 64f, 24f, 500f, 24f, 17, Style.Cream, TextAnchor.MiddleLeft);
         Print(parent, "Artifacts that meet the requirements will be shown", 64f, 48f, 600f, 18f, 12, Style.Dim, TextAnchor.MiddleLeft);
         Box(parent, 64f, 72f, 1152f + wide, 1f, Style.Hex(0xd3bc8e, 0.3f), null);
-        int firstRow = SetFirstRow();
-        int leaving = was != null && was.Layer == Layer.SetFilter && Math.Abs(was.SetFirst - firstRow) == 1 ? was.SetFirst - firstRow : 0;
-        // Row backgrounds, then the light band on the focused row gliding between them, then the rows' contents.
-        RectTransform backs = Clip(parent, "SetRowsBack", Left, Top, 2f * ColumnWidth + 14f, PerColumn * RowHeight);
-        int from = (firstRow + (leaving < 0 ? -1 : 0)) * 2, to = (firstRow + PerColumn + (leaving > 0 ? 1 : 0)) * 2;
-        for (int i = Math.Max(0, from); i < setRows.Count && i < to; i++)
-            Box(backs, Left + (i % 2) * (ColumnWidth + 14f), Top + (i / 2 - firstRow) * RowHeight, ColumnWidth, 38f, Style.Hex(0x283448, 0.6f), null);
-        if (panelCursor < setRows.Count && panelCursor / 2 >= firstRow && panelCursor / 2 < firstRow + PerColumn)
+        // The sets scroll in their window: row backgrounds, then the light band on the focused set gliding between them,
+        // then the sets themselves, all moving together.
+        int rowCount = (setRows.Count + 1) / 2, cursorRow = panelCursor / 2;
+        bool firstShow = was == null || was.Layer != Layer.SetFilter;
+        Scrolled(setList, parent, "SetList", Left, Top, 2f * ColumnWidth + 14f, PerColumn * RowHeight, rowCount * RowHeight, content =>
         {
-            float bandX = Left + (panelCursor % 2) * (ColumnWidth + 14f), bandY = Top + (panelCursor / 2 - firstRow) * RowHeight;
-            Image band = Box(parent, bandX, bandY, ColumnWidth, 38f, Paper, null);
-            Glide("band:sets", band.rectTransform, bandX, bandY, ColumnWidth, 38f, 120f);
-        }
-        RectTransform rows = Clip(parent, "SetRows", Left, Top, 2f * ColumnWidth + 14f, PerColumn * RowHeight);
-        Scroll(parent, Left, Top, 2f * ColumnWidth + 14f, PerColumn * RowHeight, RowHeight, ScrollSets);
-        for (int i = Math.Max(0, from); i < setRows.Count && i < to; i++)
-        {
-            var set = setRows[i];
-            float x = Left + (i % 2) * (ColumnWidth + 14f), y = Top + (i / 2 - firstRow) * RowHeight;
-            bool focus = i == panelCursor, selected = artifactQuery.Sets.Contains(set.Id);
-            Color ink = focus ? PaperInk : Style.Text;
-            Image radio = Picture(rows, "Radio", Shapes.Knob, selected ? Up : focus ? Style.Hex(0x3f3b30, 0.25f) : Style.Hex(0xece5d8, 0.22f));
-            TopLeft(radio.rectTransform, x + 12f, y + 11f, 16f, 16f);
-            marks[set.Id.ToString()] = radio.rectTransform;
-            if (icons.Small(set.Icon) is { } small)
+            RectTransform backs = Sub(content, "SetRowsBack");
+            for (int i = 0; i < setRows.Count; i++)
+                if (Drawn(setList, i / 2 * RowHeight, i / 2 * RowHeight + 38f))
+                    Box(backs, Left + (i % 2) * (ColumnWidth + 14f), Top + i / 2 * RowHeight, ColumnWidth, 38f, Style.Hex(0x283448, 0.6f), null);
+            if (panelCursor < setRows.Count)
             {
-                var icon = Node("Icon", rows).gameObject.AddComponent<RawImage>();
-                icon.texture = small;
-                icon.raycastTarget = false;
-                TopLeft(icon.rectTransform, x + 34f, y + 4f, 30f, 30f);
+                float bandX = Left + (panelCursor % 2) * (ColumnWidth + 14f), bandY = Top + cursorRow * RowHeight;
+                Image band = Box(content, bandX, bandY, ColumnWidth, 38f, Paper, null);
+                Glide("band:sets", band.rectTransform, bandX, bandY, ColumnWidth, 38f, 120f);
             }
-            Fit(rows, set.Name, x + 70f, y + 8f, ColumnWidth - 120f, 22f, 14, ink);
-            Print(rows, set.Count.ToString(), x, y + 8f, ColumnWidth - 12f, 22f, 14, ink, TextAnchor.MiddleRight);
-            int index = i;
-            uint id = set.Id;
-            if (i / 2 >= firstRow && i / 2 < firstRow + PerColumn)
+            RectTransform rows = Sub(content, "SetRows");
+            for (int i = 0; i < setRows.Count; i++)
+            {
+                if (!Drawn(setList, i / 2 * RowHeight, i / 2 * RowHeight + 38f))
+                    continue;
+                var set = setRows[i];
+                float x = Left + (i % 2) * (ColumnWidth + 14f), y = Top + i / 2 * RowHeight;
+                bool focus = i == panelCursor, selected = artifactQuery.Sets.Contains(set.Id);
+                Color ink = focus ? PaperInk : Style.Text;
+                Image radio = Picture(rows, "Radio", Shapes.Knob, selected ? Up : focus ? Style.Hex(0x3f3b30, 0.25f) : Style.Hex(0xece5d8, 0.22f));
+                TopLeft(radio.rectTransform, x + 12f, y + 11f, 16f, 16f);
+                marks[set.Id.ToString()] = radio.rectTransform;
+                if (icons.Small(set.Icon) is { } small)
+                {
+                    var icon = Widgets.Get<RawImage>(Node("Icon", rows).gameObject);
+                    icon.texture = small;
+                    icon.raycastTarget = false;
+                    TopLeft(icon.rectTransform, x + 34f, y + 4f, 30f, 30f);
+                }
+                Fit(rows, set.Name, x + 70f, y + 8f, ColumnWidth - 120f, 22f, 14, ink);
+                Print(rows, set.Count.ToString(), x, y + 8f, ColumnWidth - 12f, 22f, 14, ink, TextAnchor.MiddleRight);
+                int index = i;
+                uint id = set.Id;
                 Hit(rows, x, y, ColumnWidth, 38f, () => { panelCursor = index; ToggleSet(id); });
-        }
+            }
+        }, margin: 4f * RowHeight, before: state => Follow(state, was != null && was.PanelCursor != panelCursor, firstShow, cursorRow * RowHeight, cursorRow * RowHeight + 38f, 3f * RowHeight));
         RectTransform page = parent;
         parent = Sub(parent, "SetCard");
         if (panelCursor < setRows.Count)
@@ -1977,21 +1979,6 @@ internal sealed partial class Panel
 
     private const float DetailStickSpeed = 520f;
 
-    private void ScrollDetail(float by)
-    {
-        if (!detailBody)
-            return;
-        detailScroll = Math.Clamp(detailScroll + by, 0f, detailScrollMax);
-        Vector2 at = detailBody.anchoredPosition;
-        at.y = detailBaseY + detailScroll;
-        detailBody.anchoredPosition = at;
-        if (!detailThumb)
-            return;
-        float content = detailView + detailScrollMax;
-        float height = Math.Max(Style.ThumbMin, detailView * detailView / content);
-        TopLeft(detailThumb, detailThumbX, detailTrack + (detailView - height) * detailScroll / detailScrollMax, Style.ThumbWidth, height);
-    }
-
     private void Wrap(Transform parent, string text, float x, float y, float width, float height, int size, Color color, TextAnchor alignment = TextAnchor.MiddleLeft)
     {
         Text label = Print(parent, text, x, y, width, height, size, color, alignment);
@@ -2064,17 +2051,28 @@ internal sealed partial class Panel
     }
 
     // The character's portrait clipped to a circle, or their initials when the icon table does not know them.
-    private void Face(Transform parent, Character who, float x, float y, float size, bool focus)
+    // lazy: a portrait not loaded yet loads in a later frame instead of now.
+    private void Face(Transform parent, Character who, float x, float y, float size, bool focus, bool lazy = false)
     {
         Color fill = ElementColors[Math.Clamp(who.Element, 0, ElementColors.Length - 1)];
         Image backing = Picture(parent, "Backing", Shapes.Knob, new Color { r = fill.r * 0.55f, g = fill.g * 0.55f, b = fill.b * 0.55f, a = 1f });
         TopLeft(backing.rectTransform, x, y, size, size);
-        if ((icons.Small(who.Icon + "_Circle") ?? icons.Small(who.Icon)) is { } small)
+        if (lazy && !icons.HasSmall(who.Icon + "_Circle", GameIcons.SmallSize) && !icons.HasSmall(who.Icon, GameIcons.SmallSize))
+        {
+            Image mask = Picture(parent, "Clip", Shapes.Knob, Style.White);
+            TopLeft(mask.rectTransform, x, y, size, size);
+            Widgets.Get<Mask>(mask.gameObject).showMaskGraphic = false;
+            var later = Widgets.Get<RawImage>(Node("Portrait", mask.rectTransform).gameObject);
+            later.raycastTarget = false;
+            Fill(later.rectTransform);
+            QueuePortrait(later, who.Icon + "_Circle", who.Icon, GameIcons.SmallSize);
+        }
+        else if ((icons.Small(who.Icon + "_Circle") ?? icons.Small(who.Icon)) is { } small)
         {
             Image clip = Picture(parent, "Clip", Shapes.Knob, Style.White);
             TopLeft(clip.rectTransform, x, y, size, size);
-            clip.gameObject.AddComponent<Mask>().showMaskGraphic = false;
-            var portrait = Node("Portrait", clip.rectTransform).gameObject.AddComponent<RawImage>();
+            Widgets.Get<Mask>(clip.gameObject).showMaskGraphic = false;
+            var portrait = Widgets.Get<RawImage>(Node("Portrait", clip.rectTransform).gameObject);
             portrait.texture = small;
             portrait.raycastTarget = false;
             Fill(portrait.rectTransform);
@@ -2094,8 +2092,10 @@ internal sealed partial class Panel
     {
         Box(parent, x, y, width, height, Style.Strip, Shapes.Card);
         Icon_(parent, view, x, y, width);
-        Text stars = Print(parent, new string('\u2605', Math.Clamp(view.Rarity, 0, 5)), x, y + width - 22f, width, 20f, 15, Style.Star, TextAnchor.MiddleCenter);
-        stars.gameObject.AddComponent<Outline>().effectColor = Style.StarOutline;
+        // Its own name, so a redraw never hands its outline to another text.
+        Text stars = ui.Label(parent, "Stars", new string('\u2605', Math.Clamp(view.Rarity, 0, 5)), 15, Style.Star, TextAnchor.MiddleCenter);
+        TopLeft(stars.rectTransform, x, y + width - 22f, width, 20f);
+        Widgets.Get<Outline>(stars.gameObject).effectColor = Style.StarOutline;
         Print(parent, view.Slot == Slot.Weapon ? $"Lv. {view.Level}" : $"+{view.Level}", x, y + width, width, height - width, 15, Style.StripInk, TextAnchor.MiddleCenter);
         float badge = y + 4f;
         if (view.Slot == Slot.Weapon)

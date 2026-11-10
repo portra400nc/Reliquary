@@ -11,7 +11,7 @@ internal sealed unsafe class GameIcons(Steps steps, Action<string> log)
     private const string Folder = "ART/UI/Atlas/ItemIcon/";
     private const string LoadSpriteField = "NativeMethodInfoPtr_LoadExternalSprite_Public_Static_Sprite_String_UInt32_0";
     private const string ElementIconPrefix = "UI_Buff_Element_";
-    private const int SmallSize = 64;
+    public const int SmallSize = 64;
     private readonly Dictionary<string, Sprite> sprites = [];
     private readonly Dictionary<string, RenderTexture> smalls = [];
     private readonly Dictionary<int, Sprite> elements = [];

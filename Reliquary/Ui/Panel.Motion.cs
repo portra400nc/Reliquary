@@ -13,11 +13,10 @@ internal sealed partial class Panel
 {
     // What a build showed, for telling what changed since the build before.
     private sealed record Shot(Layer Layer, Tab Tab, int Avatar, int Template, bool InSlots, int Slot, string SlotItems,
-        int Team, bool InMembers, int Member, int RosterFirst, string RosterOrder, int PickerFirst,
-        string PickerOrder, int PickerCursor, string Marks, int SetFirst, int PanelCursor, string Toast, ToastKind Kind,
-        int StripStart, bool Blurred);
+        int Team, bool InMembers, int Member, int RosterCursor, string RosterOrder,
+        string PickerOrder, int PickerCursor, string Marks, int PanelCursor, string Toast, ToastKind Kind,
+        bool Blurred);
 
-    private const float RosterStep = CardHeight + CardGapY, PickerStep = 154f, SetStep = 45f;
     // The highlights that move with a page change, slowed on 2026-11-08 at the user's request.
     private const float TabMs = 320f, CharacterMs = 260f, ListMs = 260f;
 
@@ -55,7 +54,7 @@ internal sealed partial class Panel
     {
         RectTransform window = Node(name + "Window", parent);
         TopLeft(window, x, y, width, height);
-        window.gameObject.AddComponent<RectMask2D>();
+        Widgets.Get<RectMask2D>(window.gameObject);
         RectTransform inner = Node(name, window);
         TopLeft(inner, -x, -y, Width, Style.ReferenceHeight);
         groups[name] = inner;
@@ -128,6 +127,7 @@ internal sealed partial class Panel
     {
         if (!groups.TryGetValue(name, out RectTransform group) || !group)
             return;
+        Widgets.Release(group);
         group.SetParent(root.transform, true);
         groups.Remove(name);
         (below ? ghostsBelow : ghosts).Add(group);
@@ -174,9 +174,9 @@ internal sealed partial class Panel
         };
         return new Shot(layer, tab, avatar, template, inSlots, slotIndex,
             Selected == null ? "" : string.Join(",", SlotOrder.Select(slot => Selected.Items.GetValueOrDefault(slot))),
-            team, inMembers, member, RosterFirstRow(), string.Join(",", roster.Take(40).Select(entry => entry.Guid)),
-            PickerFirst(), string.Join(",", pickerItems.Take(40)), pickerCursor, marks, SetFirstRow(), panelCursor,
-            toastUntil != 0f ? toast : "", toastKind, StripStart(), backdrop.Picture != null);
+            team, inMembers, member, rosterCursor, string.Join(",", roster.Take(40).Select(entry => entry.Guid)),
+            string.Join(",", pickerItems.Take(40)), pickerCursor, marks, panelCursor,
+            toastUntil != 0f ? toast : "", toastKind, backdrop.Picture != null);
     }
 
     private static Layer Base(Layer layer) => layer switch
@@ -287,19 +287,9 @@ internal sealed partial class Panel
             motion.Fade(rosterGrid, 0f, 1f, 140f);
         if (from == to && from is Layer.Main or Layer.Chooser)
             PageMotion(before, now);
-        if (from == to && from == Layer.Chooser)
-            ListMotion("Roster", before.RosterFirst, now.RosterFirst, RosterStep, before.RosterOrder != now.RosterOrder);
-        if (from == to && from == Layer.Picker)
-        {
-            // The item details change at once: the user had their cross-fade removed on 2026-11-08.
-            ListMotion("Grid", before.PickerFirst, now.PickerFirst, PickerStep, false);
-            ListMotion("GridHolders", before.PickerFirst, now.PickerFirst, PickerStep, false);
-        }
-        if (from == to && from == Layer.SetFilter)
-        {
-            ListMotion("SetRows", before.SetFirst, now.SetFirst, SetStep, false);
-            ListMotion("SetRowsBack", before.SetFirst, now.SetFirst, SetStep, false);
-        }
+        // A list that changed order fades back in; scrolling itself is ScrollState's, in Panel.Scroll.cs.
+        if (from == to && from == Layer.Chooser && before.RosterOrder != now.RosterOrder && groups.TryGetValue("Roster", out RectTransform reordered))
+            motion.Fade(reordered, 0f, 1f, 140f);
         if (before.Layer == now.Layer && before.Marks != now.Marks)
             PopMarks(before.Marks, now.Marks);
         ToastMotion(before, now);
@@ -330,25 +320,12 @@ internal sealed partial class Panel
             return;
         if (before.Avatar != now.Avatar)
         {
-            if (before.StripStart != now.StripStart && Math.Abs(before.StripStart - now.StripStart) == 1 && groups.TryGetValue("Faces", out RectTransform faces))
-                motion.Shift(faces, (now.StripStart - before.StripStart) * FaceStep, 0f, CharacterMs);
             return;
         }
         if (now.Tab == Tab.Characters && !before.InSlots && now.InSlots && parts.TryGetValue("frame:slot", out RectTransform slotFrame))
             motion.Fade(slotFrame, 0f, 1f, 120f);
         if (now.Tab == Tab.Teams && !before.InMembers && now.InMembers && parts.TryGetValue("frame:member", out RectTransform memberFrame))
             motion.Fade(memberFrame, 0f, 1f, 120f);
-    }
-
-    // A grid that moved by a row slides into place, and one that changed order fades back in.
-    private void ListMotion(string name, int beforeFirst, int nowFirst, float step, bool reordered)
-    {
-        if (!groups.TryGetValue(name, out RectTransform grid))
-            return;
-        if (reordered)
-            motion.Fade(grid, 0f, 1f, 140f);
-        else if (beforeFirst != nowFirst && Math.Abs(beforeFirst - nowFirst) == 1)
-            motion.Shift(grid, 0f, (nowFirst - beforeFirst) * step, 140f);
     }
 
     private void PickerIn()
