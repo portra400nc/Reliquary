@@ -5,8 +5,7 @@ using Object = UnityEngine.Object;
 
 namespace Reliquary.Ui;
 
-// Hover for keyboard and mouse, design D of .work/reliquary-ui/hover (approved 2026-11-10 without the button sheen, rows
-// on the soft wash): cards lift 3 units with a shadow and brighten, buttons get a cream edge with a soft glow, rows get
+// Hover for keyboard and mouse: cards lift 3 units with a shadow and brighten, buttons get a cream edge with a soft glow, rows get
 // a pale wash, faces and the All characters tile a cream ring that draws in, and a tab a faint preview of its underline.
 // A press dips a card or button to 96%. Hover is apart from the focus frame, and off in the controller layout.
 //

@@ -5,7 +5,7 @@ using Object = UnityEngine.Object;
 
 namespace Reliquary.Ui;
 
-// The panel's animations, as in the approved motion mockup (.work/reliquary-ui/motion). Each build draws its parts into
+// The panel's animations. Each build draws its parts into
 // named groups; afterwards the build is compared with the one before, and the groups that changed get a short tween.
 // Highlights such as focus frames glide from where the previous build left them, and a layer that closes stays on
 // screen as a ghost while it fades out.

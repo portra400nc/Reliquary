@@ -101,7 +101,7 @@ internal static class Shapes
 
     private static readonly Dictionary<Shape, Sprite> sprites = [];
 
-    // The focus frame, design A of .work/reliquary-ui/focus: a 2-unit white ring on the marked part's own rounding, and
+    // The focus frame: a 2-unit white ring on the marked part's own rounding, and
     // outside it a warm glow like CSS's box-shadow 0 0 14px 3px, whose strength the panel breathes.
     public const float FocusGlowMargin = 14f;
     private const float GlowSigma = 5f;

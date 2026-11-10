@@ -63,8 +63,8 @@ internal static class Pad
     private enum Library { Untried, XInput14, XInput910, Missing }
 
     private static Library library;
-    // Every connected pad is read and their input combined, because the virtual pad that drives the Deck remotely can take
-    // a slot and move the Deck's own pad.
+    // Every connected pad is read and their input combined, because a second pad, such as a virtual one, can take a slot
+    // and move the built-in pad to another.
     private static readonly bool[] connected = new bool[4];
     private static float nextScan;
     private static bool settle;
